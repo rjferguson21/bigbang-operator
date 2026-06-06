@@ -1,0 +1,40 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: example-app
+---
+# Defaults + a raw `additionalPolicies[]` entry. Use this to exercise the
+# label-driven prune path: apply, then remove the additionalPolicies block
+# and reapply — the operator should delete `allow-external-egress` while
+# leaving the defaults alone.
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: example-app
+  namespace: example-app
+spec:
+  istio:
+    enabled: true
+  networkPolicies:
+    enabled: true
+    additionalPolicies:
+      - name: allow-external-egress
+        labels:
+          purpose: external-egress
+        spec:
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: example-app
+          policyTypes: [Egress]
+          egress:
+            - to:
+                - ipBlock:
+                    cidr: 0.0.0.0/0
+                    except:
+                      - 10.0.0.0/8
+                      - 172.16.0.0/12
+                      - 192.168.0.0/16
+              ports:
+                - protocol: TCP
+                  port: 443

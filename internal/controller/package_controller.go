@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"sort"
 
+	istionetv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istiosecv1 "istio.io/client-go/pkg/apis/security/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -125,6 +126,8 @@ func managedListKinds() []client.ObjectList {
 	return []client.ObjectList{
 		&networkingv1.NetworkPolicyList{},
 		&istiosecv1.PeerAuthenticationList{},
+		&istionetv1.VirtualServiceList{},
+		&istionetv1.ServiceEntryList{},
 	}
 }
 
@@ -137,6 +140,18 @@ func extractItems(list client.ObjectList) ([]client.Object, error) {
 		}
 		return out, nil
 	case *istiosecv1.PeerAuthenticationList:
+		out := make([]client.Object, len(l.Items))
+		for i := range l.Items {
+			out[i] = l.Items[i]
+		}
+		return out, nil
+	case *istionetv1.VirtualServiceList:
+		out := make([]client.Object, len(l.Items))
+		for i := range l.Items {
+			out[i] = l.Items[i]
+		}
+		return out, nil
+	case *istionetv1.ServiceEntryList:
 		out := make([]client.Object, len(l.Items))
 		for i := range l.Items {
 			out[i] = l.Items[i]

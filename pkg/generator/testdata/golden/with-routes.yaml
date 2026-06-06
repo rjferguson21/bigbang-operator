@@ -1,0 +1,328 @@
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+  name: default-peer-auth
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  mtls:
+    mode: STRICT
+status: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: egress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: default-egress-deny-all
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: egress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: default-egress-allow-all-in-ns
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  egress:
+  - to:
+    - podSelector: {}
+  podSelector: {}
+  policyTypes:
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: egress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: default-egress-allow-kube-dns
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  egress:
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+  podSelector: {}
+  policyTypes:
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: egress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: default-egress-allow-istiod
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  egress:
+  - ports:
+    - port: 15012
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-system
+      podSelector:
+        matchLabels:
+          app: istiod
+  podSelector: {}
+  policyTypes:
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: ingress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: default-ingress-deny-all
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: ingress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: default-ingress-allow-all-in-ns
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  ingress:
+  - from:
+    - podSelector: {}
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: ingress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: default-ingress-allow-prometheus-to-istio-sidecar
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: prometheus
+    ports:
+    - port: 15020
+      protocol: TCP
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+  name: example-app
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  gateways:
+  - istio-gateway/public-ingressgateway
+  hosts:
+  - example-app.bigbang.mil
+  http:
+  - route:
+    - destination:
+        host: example-app
+        port:
+          number: 8080
+status: {}
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+  name: example-app-internal
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  hosts:
+  - example-app.bigbang.mil
+  location: MESH_INTERNAL
+  ports:
+  - name: http
+    number: 8080
+    protocol: HTTP
+  resolution: DNS
+status: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: ingress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: allow-ingress-to-example-app-8080-from-ns-istio-gateway-pod-public-ingressgateway
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-gateway
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: public-ingressgateway
+    ports:
+    - port: 8080
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+  name: external-api
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  hosts:
+  - api.example.com
+  ports:
+  - name: https
+    number: 443
+    protocol: TLS
+  resolution: DNS
+status: {}

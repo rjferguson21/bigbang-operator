@@ -1,0 +1,144 @@
+---
+# Loki Package — derived from the `loki` HelmRelease in `bigbang`
+# (chart loki@6.55.0-bb.2), which deploys into the `logging` namespace.
+#
+# Source: `flux debug hr loki -n bigbang --show-values` on the dev cluster.
+# Trimmed to only the bb-common-relevant subsections (`istio`,
+# `networkPolicies`, `routes`); chart-specific keys (loki, gateway, minio,
+# monitoring, bbtests, etc.) are omitted — those drive the workload chart
+# and are out of scope for the operator today.
+#
+# Reconciler support status:
+#   * istio.enabled, istio.mtls.mode    — supported
+#   * istio.ambient, sidecar, authzPol  — DEFERRED (no resources emitted)
+#   * networkPolicies defaults          — supported (7 default policies)
+#   * networkPolicies.egress.definitions  — DEFERRED (bb-common feature
+#                                          not yet implemented)
+#   * networkPolicies.egress.from.<src> — DEFERRED (patternProperties
+#                                          shorthand)
+#   * networkPolicies.ingress.to.<dst>  — DEFERRED (same)
+#   * networkPolicies.additionalPolicies[] — supported (raw passthrough)
+#   * routes.inbound / routes.outbound  — DEFERRED
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logging
+---
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: loki
+  namespace: logging
+spec:
+  istio:
+    enabled: true
+    # Loki HR uses defaults (STRICT), sidecar, and authzPol from netpol.
+    ambient:
+      enabled: false
+    authorizationPolicies:
+      enabled: true
+      generateFromNetpol: true
+    sidecar:
+      enabled: true
+  networkPolicies:
+    enabled: true
+    hbonePortInjection:
+      enabled: false
+    egress:
+      # bb-common shorthand: named ipBlock+port templates referenced from
+      # `from.<src>.to.definition`. DEFERRED in the operator.
+      definitions:
+        database-subnets:
+          ports:
+            - { port: 5432, protocol: TCP }
+          to:
+            - ipBlock: { cidr: 192.168.0.0/16 }
+            - ipBlock: { cidr: 172.16.0.0/12 }
+            - ipBlock: { cidr: 10.0.0.0/8 }
+        kafka-subnets:
+          ports:
+            - { port: 9092, protocol: TCP }
+            - { port: 9093, protocol: TCP }
+          to:
+            - ipBlock: { cidr: 0.0.0.0/0 }
+        kubeAPI:
+          to:
+            - ipBlock:
+                cidr: 0.0.0.0/0
+                except: [169.254.169.254/32]
+        sso:
+          to:
+            - ipBlock: { cidr: 0.0.0.0/0 }
+        storage-subnets:
+          ports:
+            - { port: 443, protocol: TCP }
+          to:
+            - ipBlock: { cidr: 0.0.0.0/0 }
+      # DEFERRED: shorthand expansion of `from.<src>.to.k8s.*` and
+      # `from.<src>.to.definition.*`.
+      from:
+        logging-loki:
+          to:
+            definition:
+              storage-subnets: false
+            k8s:
+              tempo/tempo:9411: true
+        minio:
+          to:
+            definition:
+              kubeAPI: true
+              storage-subnets: true
+            k8s:
+              minio-operator/minio-operator:4222: true
+    ingress:
+      definitions:
+        kubeAPI:
+          from:
+            - ipBlock: { cidr: 192.168.0.0/16 }
+            - ipBlock: { cidr: 172.16.0.0/12 }
+            - ipBlock: { cidr: 10.0.0.0/8 }
+        load-balancer-subnets:
+          from:
+            - ipBlock: { cidr: 192.168.0.0/16 }
+            - ipBlock: { cidr: 172.16.0.0/12 }
+            - ipBlock: { cidr: 10.0.0.0/8 }
+      # DEFERRED: shorthand `to.<dst>[:port].from.k8s.*` expansion.
+      to:
+        logging-loki:3100:
+          from:
+            k8s:
+              alloy-alloy-logs@alloy/alloy-logs: true
+              alloy-alloy-operator@alloy/alloy: true
+              alloy-alloy-singleton@alloy/alloy-singleton: true
+              monitoring-monitoring-kube-prometheus@monitoring/prometheus: true
+        loki:8080:
+          from:
+            k8s:
+              monitoring-grafana@monitoring/grafana: true
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: gateway
+              app.kubernetes.io/name: logging-loki
+        minio:9000:
+          from:
+            k8s:
+              minio-operator@minio-operator/minio-operator: true
+  # DEFERRED in v1 — routes generation needs patternProperties decoding.
+  routes:
+    inbound:
+      loki:
+        enabled: true
+        gateways: [istio-gateway/public-ingressgateway]
+        hosts: [loki.dev.bigbang.mil]
+        service: logging-loki-gateway.logging.svc.cluster.local
+        port: 80
+        containerPort: 8080
+        selector:
+          app.kubernetes.io/component: gateway
+          app.kubernetes.io/name: logging-loki
+    outbound:
+      bb-tests:
+        enabled: true
+        hosts:
+          - repo1.dso.mil
+          - grafana.dev.bigbang.mil

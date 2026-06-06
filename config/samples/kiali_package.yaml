@@ -1,0 +1,117 @@
+---
+# Kiali Package — derived from the `kiali` HelmRelease in `bigbang`
+# (chart kiali@2.26.1-bb.1), which deploys into the `kiali` namespace.
+#
+# Source: `flux debug hr kiali -n bigbang --show-values` on the dev cluster.
+# Trimmed to only the bb-common-relevant subsections.
+#
+# Reconciler support status:
+#   * istio.enabled / mtls               — supported
+#   * istio.ambient / sidecar / authzPol — DEFERRED
+#   * networkPolicies defaults           — supported (7 default policies)
+#   * networkPolicies.egress.defaults.*  — DEFERRED (per-default *bool
+#                                           toggling — schema-to-go currently
+#                                           emits plain bool)
+#   * networkPolicies.egress.definitions — DEFERRED
+#   * networkPolicies.egress.from.<src>  — DEFERRED (shorthand)
+#   * networkPolicies.ingress.defaults.* — DEFERRED (same reason)
+#   * networkPolicies.ingress.definitions — DEFERRED
+#   * routes.inbound / routes.outbound   — DEFERRED
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kiali
+---
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: kiali
+  namespace: kiali
+spec:
+  istio:
+    enabled: true
+    ambient:
+      enabled: false
+    authorizationPolicies:
+      enabled: true
+      generateFromNetpol: true
+    sidecar:
+      enabled: true
+  networkPolicies:
+    enabled: true
+    hbonePortInjection:
+      enabled: false
+    egress:
+      defaults:
+        allowIstiod:
+          enabled: true
+      definitions:
+        database-subnets:
+          ports:
+            - { port: 5432, protocol: TCP }
+          to:
+            - ipBlock: { cidr: 192.168.0.0/16 }
+            - ipBlock: { cidr: 172.16.0.0/12 }
+            - ipBlock: { cidr: 10.0.0.0/8 }
+        kafka-subnets:
+          ports:
+            - { port: 9092, protocol: TCP }
+            - { port: 9093, protocol: TCP }
+          to:
+            - ipBlock: { cidr: 0.0.0.0/0 }
+        kubeAPI:
+          to:
+            - ipBlock:
+                cidr: 0.0.0.0/0
+                except: [169.254.169.254/32]
+        sso:
+          to:
+            - ipBlock: { cidr: 0.0.0.0/0 }
+        storage-subnets:
+          ports:
+            - { port: 443, protocol: TCP }
+          to:
+            - ipBlock: { cidr: 0.0.0.0/0 }
+      from:
+        kiali:
+          to:
+            definition:
+              sso: false
+            k8s:
+              istio-system/istiod:15014: true
+              monitoring/grafana:3000: true
+              monitoring/prometheus:9090: true
+              tempo/tempo:3200: true
+    ingress:
+      defaults:
+        allowPrometheusToIstioSidecar:
+          enabled: true
+      definitions:
+        kubeAPI:
+          from:
+            - ipBlock: { cidr: 192.168.0.0/16 }
+            - ipBlock: { cidr: 172.16.0.0/12 }
+            - ipBlock: { cidr: 10.0.0.0/8 }
+        load-balancer-subnets:
+          from:
+            - ipBlock: { cidr: 192.168.0.0/16 }
+            - ipBlock: { cidr: 172.16.0.0/12 }
+            - ipBlock: { cidr: 10.0.0.0/8 }
+  routes:
+    inbound:
+      kiali:
+        # Note: the HR only sets `gateways`; bb-common fills in service /
+        # hosts / port from the chart's release name + global.domain. The
+        # operator does not know about chart globals, so a v1 sample needs
+        # these spelled out explicitly. Kept minimal here to match the HR.
+        gateways: [istio-gateway/public-ingressgateway]
+    outbound:
+      bb-tests:
+        enabled: true
+        hosts: [repo1.dso.mil]
+      grafana:
+        enabled: true
+        hosts: [grafana.dev.bigbang.mil]
+      sso:
+        enabled: false
+        hosts: [keycloak.dev.bigbang.mil]

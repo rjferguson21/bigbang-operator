@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	istionetv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istiosecv1 "istio.io/client-go/pkg/apis/security/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -80,6 +81,7 @@ func buildScheme(t *testing.T) *runtime.Scheme {
 	utilruntime.Must(bbv1alpha1.AddToScheme(s))
 	utilruntime.Must(networkingv1.AddToScheme(s))
 	utilruntime.Must(istiosecv1.AddToScheme(s))
+	utilruntime.Must(istionetv1.AddToScheme(s))
 	return s
 }
 

@@ -35,6 +35,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	istionetv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istiosecv1 "istio.io/client-go/pkg/apis/security/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 
@@ -54,6 +55,7 @@ func init() {
 	utilruntime.Must(bigbangv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(networkingv1.AddToScheme(scheme))
 	utilruntime.Must(istiosecv1.AddToScheme(scheme))
+	utilruntime.Must(istionetv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 

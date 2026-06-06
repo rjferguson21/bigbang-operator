@@ -1,0 +1,51 @@
+# Kyverno PolicyException for local development testing of the operator.
+#
+# WHY THIS EXISTS
+# When deploying the operator to a Big Bang cluster, several baseline Kyverno
+# policies block the dev image. Notably:
+#   - restrict-image-registries: requires registry1.dso.mil / registry.dso.mil
+#     (local builds like `bigbang-operator:dev` are not from an approved registry).
+#   - disallow-image-tags: forbids floating tags like `:dev` or `:latest`.
+#
+# This PolicyException scopes a narrow exemption to the `bigbang-operator`
+# namespace ONLY, for these two rules, so a locally-built image can run there
+# during development. It is NOT shipped in the chart and should NOT be applied
+# in production clusters — production should use an Iron-Bank-hardened image
+# published to registry1.dso.mil with an immutable tag.
+#
+# IMPORTANT — namespace requirement
+# This Big Bang cluster's Kyverno is started with
+# `--exceptionNamespace=kyverno`, which means PolicyException resources are
+# only honored when they live in the `kyverno` namespace, regardless of
+# which namespaces they match. So this manifest must be applied into
+# `kyverno`, not into `bigbang-operator`.
+#
+# HOW TO APPLY
+#   kubectl apply -f hack/local-dev/policy-exception.yaml
+#
+# HOW TO REMOVE
+#   kubectl delete -f hack/local-dev/policy-exception.yaml
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: bigbang-operator-local-dev
+  namespace: kyverno
+spec:
+  exceptions:
+    - policyName: restrict-image-registries
+      ruleNames:
+        - validate-registries
+        - autogen-validate-registries
+    - policyName: disallow-image-tags
+      ruleNames:
+        - validate-image-tag
+        - autogen-validate-image-tag
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - Deployment
+            - ReplicaSet
+          namespaces:
+            - bigbang-operator

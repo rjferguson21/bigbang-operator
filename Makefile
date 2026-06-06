@@ -179,6 +179,65 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
+##@ Local development (k3d + helm chart)
+
+# Inner loop:
+#   make install            # apply CRD to current-context cluster
+#   make run                # run manager out-of-cluster (~2s reload)
+#   kubectl apply -f config/samples/
+#
+# Full-cluster validation:
+#   make dev-deploy         # build image, import to k3d, install chart + polex
+#   kubectl apply -f config/samples/
+#   make dev-undeploy       # tear it all down
+
+DEV_IMG          ?= bigbang-operator:dev
+DEV_K3D_CLUSTER  ?= bb-helm
+DEV_NAMESPACE    ?= bigbang-operator
+DEV_RELEASE      ?= bigbang-operator
+DEV_POLEX        ?= hack/local-dev/policy-exception.yaml
+
+.PHONY: dev-cluster
+dev-cluster: ## Print the kubectl context we'd deploy into.
+	@echo "kubectl context: $$($(KUBECTL) config current-context)"
+	@echo "k3d cluster:     $(DEV_K3D_CLUSTER)"
+	@echo "image:           $(DEV_IMG)"
+	@echo "namespace:       $(DEV_NAMESPACE)"
+
+.PHONY: dev-image
+dev-image: ## Build the operator image and import it into the k3d cluster.
+	IMG=$(DEV_IMG) $(MAKE) docker-build
+	k3d image import $(DEV_IMG) -c $(DEV_K3D_CLUSTER)
+
+.PHONY: dev-polex
+dev-polex: ## Apply the Kyverno PolicyException so dev images can run.
+	$(KUBECTL) apply -f $(DEV_POLEX)
+
+.PHONY: dev-deploy
+dev-deploy: dev-image chart-sync dev-polex ## Build, import, sync CRD, helm upgrade.
+	$(KUBECTL) create namespace $(DEV_NAMESPACE) --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	helm upgrade --install $(DEV_RELEASE) ./chart \
+		-n $(DEV_NAMESPACE) \
+		--set image.repository=$(firstword $(subst :, ,$(DEV_IMG))) \
+		--set image.tag=$(lastword $(subst :, ,$(DEV_IMG))) \
+		--set image.pullPolicy=IfNotPresent \
+		--set metrics.bindAddress=":8080" \
+		--set metrics.secure=false
+	# Rebuilt image has a new SHA but the same tag, so Helm sees no diff and
+	# leaves the pod running the cached image. Force the rollout.
+	$(KUBECTL) -n $(DEV_NAMESPACE) rollout restart deploy/$(DEV_RELEASE)-bigbang-operator
+	$(KUBECTL) -n $(DEV_NAMESPACE) rollout status deploy/$(DEV_RELEASE)-bigbang-operator --timeout=120s
+
+.PHONY: dev-logs
+dev-logs: ## Tail operator logs.
+	$(KUBECTL) -n $(DEV_NAMESPACE) logs -f deploy/$(DEV_RELEASE)-bigbang-operator
+
+.PHONY: dev-undeploy
+dev-undeploy: ## Uninstall the chart, remove the PolicyException, and delete the namespace.
+	-helm uninstall $(DEV_RELEASE) -n $(DEV_NAMESPACE)
+	-$(KUBECTL) delete -f $(DEV_POLEX) --ignore-not-found
+	-$(KUBECTL) delete namespace $(DEV_NAMESPACE) --ignore-not-found
+
 ##@ Dependencies
 
 ## Location to install dependencies to

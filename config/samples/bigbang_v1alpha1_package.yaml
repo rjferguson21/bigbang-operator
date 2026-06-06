@@ -1,9 +1,21 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: example-app
+---
+# Defaults-only sample: turning on `istio.enabled` and
+# `networkPolicies.enabled` produces 1 PeerAuthentication + 7 default
+# NetworkPolicies in the example-app namespace.
 apiVersion: bigbang.dev/v1alpha1
 kind: Package
 metadata:
-  labels:
-    app.kubernetes.io/name: bigbang-operator
-    app.kubernetes.io/managed-by: kustomize
-  name: package-sample
+  name: example-app
+  namespace: example-app
 spec:
-  # TODO(user): Add fields here
+  istio:
+    enabled: true
+    mtls:
+      mode: STRICT
+  networkPolicies:
+    enabled: true
