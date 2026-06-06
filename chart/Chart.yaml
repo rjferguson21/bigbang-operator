@@ -1,0 +1,15 @@
+apiVersion: v2
+name: bigbang-operator
+description: Operator that reconciles Big Bang Package CRs into istio + NetworkPolicy resources.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - bigbang
+  - operator
+  - kubernetes
+home: https://repo1.dso.mil/big-bang/product/packages/bigbang-operator
+sources:
+  - https://repo1.dso.mil/big-bang/product/packages/bigbang-operator
+maintainers:
+  - name: Big Bang

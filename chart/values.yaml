@@ -1,0 +1,41 @@
+image:
+  repository: registry1.dso.mil/ironbank/big-bang/bigbang-operator
+  tag: 0.1.0
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+replicas: 1
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Manager command-line flags.
+leaderElection:
+  enabled: true
+metrics:
+  bindAddress: ":8443"
+  secure: true
+healthProbe:
+  bindAddress: ":8081"
+
+# Pod security context.
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true

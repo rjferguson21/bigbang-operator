@@ -1,0 +1,646 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: packages.bigbang.dev
+spec:
+  group: bigbang.dev
+  names:
+    kind: Package
+    listKind: PackageList
+    plural: packages
+    singular: package
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Package is the Schema for the packages API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of Package
+            properties:
+              istio:
+                description: |-
+                  istio configures Istio resources (PeerAuthentication, Sidecar,
+                  AuthorizationPolicies, ServiceEntries).
+                properties:
+                  ambient:
+                    description: Istio ambient configuration
+                    properties:
+                      enabled:
+                        description: Enable ambient mode settings
+                        type: boolean
+                    type: object
+                  authorizationPolicies:
+                    description: Istio AuthorizationPolicies configuration for service
+                      mesh security
+                    properties:
+                      additionalPolicies:
+                        additionalProperties:
+                          description: |-
+                            Additional custom Istio AuthorizationPolicies (map structure to avoid override
+                            issues)
+                          properties:
+                            annotations:
+                              additionalProperties:
+                                type: string
+                              description: Annotations for the authorization policy
+                              type: object
+                            enabled:
+                              description: Enable this authorization policy
+                              type: boolean
+                            labels:
+                              additionalProperties:
+                                type: string
+                              description: Additional labels for the authorization
+                                policy
+                              type: object
+                            name:
+                              description: Name of the authorization policy (optional,
+                                defaults to map key)
+                              type: string
+                            namespace:
+                              description: Namespace for the authorization policy
+                                (optional)
+                              type: string
+                            spec:
+                              description: Istio AuthorizationPolicy spec
+                              properties:
+                                action:
+                                  description: Action to take when rules match
+                                  type: string
+                                rules:
+                                  description: List of authorization rules
+                                  items:
+                                    additionalProperties:
+                                      x-kubernetes-preserve-unknown-fields: true
+                                    type: object
+                                  type: array
+                                selector:
+                                  additionalProperties:
+                                    x-kubernetes-preserve-unknown-fields: true
+                                  description: Pod selector for the authorization
+                                    policy
+                                  type: object
+                              type: object
+                          required:
+                          - spec
+                          type: object
+                        description: |-
+                          Additional custom Istio AuthorizationPolicies (map structure to avoid override
+                          issues)
+                        type: object
+                      custom:
+                        description: List of custom Istio AuthorizationPolicy resources
+                        items:
+                          properties:
+                            annotations:
+                              additionalProperties:
+                                type: string
+                              description: Annotations for the AuthorizationPolicy
+                              type: object
+                            labels:
+                              additionalProperties:
+                                type: string
+                              description: Additional labels for the AuthorizationPolicy
+                              type: object
+                            name:
+                              description: Name of the AuthorizationPolicy
+                              type: string
+                            spec:
+                              additionalProperties:
+                                x-kubernetes-preserve-unknown-fields: true
+                              description: Istio AuthorizationPolicy spec
+                              type: object
+                          required:
+                          - name
+                          - spec
+                          type: object
+                        type: array
+                      defaults:
+                        description: Default authorization policies
+                        properties:
+                          allowInNamespace:
+                            description: Allow ingress from same namespace
+                            properties:
+                              enabled:
+                                description: Enabled corresponds to the JSON schema
+                                  field "enabled".
+                                type: boolean
+                            type: object
+                          denyAll:
+                            description: Deny all ingress by default (allow-nothing
+                              policy)
+                            properties:
+                              enabled:
+                                description: Enabled corresponds to the JSON schema
+                                  field "enabled".
+                                type: boolean
+                            type: object
+                          enabled:
+                            description: Enable all default authorization policies
+                            type: boolean
+                        type: object
+                      enabled:
+                        description: Enable generation of Istio AuthorizationPolicies
+                        type: boolean
+                      generateFromNetpol:
+                        description: |-
+                          Generate Istio AuthorizationPolicies from NetworkPolicy configurations with
+                          SPIFFE-based identity verification when service account identities are
+                          specified
+                        type: boolean
+                    type: object
+                  enabled:
+                    description: Enable Istio integration
+                    type: boolean
+                  mtls:
+                    description: Mutual TLS configuration
+                    properties:
+                      mode:
+                        description: mTLS mode (STRICT, PERMISSIVE, or DISABLE)
+                        type: string
+                    type: object
+                  prependReleaseName:
+                    description: Prepend release name to istio resource names
+                    type: boolean
+                  serviceEntries:
+                    description: Istio ServiceEntry resources configuration
+                    properties:
+                      custom:
+                        description: List of custom Istio ServiceEntry resources
+                        items:
+                          properties:
+                            annotations:
+                              additionalProperties:
+                                type: string
+                              description: Annotations for the ServiceEntry
+                              type: object
+                            labels:
+                              additionalProperties:
+                                type: string
+                              description: Additional labels for the ServiceEntry
+                              type: object
+                            name:
+                              description: Name of the ServiceEntry
+                              type: string
+                            spec:
+                              additionalProperties:
+                                x-kubernetes-preserve-unknown-fields: true
+                              description: Istio ServiceEntry spec
+                              type: object
+                          required:
+                          - name
+                          - spec
+                          type: object
+                        type: array
+                    type: object
+                  sidecar:
+                    description: Istio Sidecar resource configuration for outbound
+                      traffic control
+                    properties:
+                      enabled:
+                        description: Enable Istio Sidecar resource (restricts outbound
+                          traffic)
+                        type: boolean
+                      outboundTrafficPolicyMode:
+                        description: Outbound traffic policy mode (REGISTRY_ONLY or
+                          ALLOW_ANY)
+                        type: string
+                    type: object
+                type: object
+              networkPolicies:
+                description: |-
+                  networkPolicies configures default policies and shorthand / raw
+                  NetworkPolicy resources.
+                properties:
+                  additional:
+                    description: |-
+                      Additional raw network policies (also accepts 'additional' for backwards
+                      compatibility)
+                    items:
+                      properties:
+                        annotations:
+                          additionalProperties:
+                            type: string
+                          description: Annotations for the network policy
+                          type: object
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: Additional labels for the network policy
+                          type: object
+                        name:
+                          description: Name of the network policy
+                          type: string
+                        spec:
+                          additionalProperties:
+                            x-kubernetes-preserve-unknown-fields: true
+                          description: Raw NetworkPolicy spec
+                          type: object
+                      required:
+                      - name
+                      - spec
+                      type: object
+                    type: array
+                  additionalPolicies:
+                    description: |-
+                      Additional raw network policies (also accepts 'additional' for backwards
+                      compatibility)
+                    items:
+                      properties:
+                        annotations:
+                          additionalProperties:
+                            type: string
+                          description: Annotations for the network policy
+                          type: object
+                        labels:
+                          additionalProperties:
+                            type: string
+                          description: Additional labels for the network policy
+                          type: object
+                        name:
+                          description: Name of the network policy
+                          type: string
+                        spec:
+                          additionalProperties:
+                            x-kubernetes-preserve-unknown-fields: true
+                          description: Raw NetworkPolicy spec
+                          type: object
+                      required:
+                      - name
+                      - spec
+                      type: object
+                    type: array
+                  defaultsAsHooks:
+                    description: Create hook versions of default policies in addition
+                      to regular versions
+                    properties:
+                      deletePolicies:
+                        description: Helm hook delete policies
+                        items:
+                          type: string
+                        type: array
+                      enabled:
+                        description: |-
+                          Enable hook creation for default policies (creates both regular and hook
+                          versions)
+                        type: boolean
+                      hooks:
+                        description: Helm hook types
+                        items:
+                          type: string
+                        type: array
+                      weight:
+                        description: Helm hook weight for execution order
+                        type: integer
+                    type: object
+                  egress:
+                    description: Egress network policy configuration
+                    properties:
+                      defaults:
+                        description: Default egress policies
+                        properties:
+                          allowInNamespace:
+                            description: Allow egress within the same namespace
+                            properties:
+                              enabled:
+                                description: Enabled corresponds to the JSON schema
+                                  field "enabled".
+                                type: boolean
+                            type: object
+                          allowIstiod:
+                            description: |-
+                              Allow sidecar-mode Istio control plane communication (TCP port 15012). Not
+                              rendered when ambient mode is enabled.
+                            properties:
+                              enabled:
+                                description: Enabled corresponds to the JSON schema
+                                  field "enabled".
+                                type: boolean
+                            type: object
+                          allowKubeDns:
+                            description: Allow DNS resolution (TCP/UDP port 53)
+                            properties:
+                              enabled:
+                                description: Enabled corresponds to the JSON schema
+                                  field "enabled".
+                                type: boolean
+                            type: object
+                          denyAll:
+                            description: Deny all egress by default
+                            properties:
+                              enabled:
+                                description: Enabled corresponds to the JSON schema
+                                  field "enabled".
+                                type: boolean
+                            type: object
+                          enabled:
+                            description: Enable all default egress policies
+                            type: boolean
+                        type: object
+                      definitions:
+                        additionalProperties:
+                          description: Custom egress rule definitions that can be
+                            referenced
+                          properties:
+                            ports:
+                              description: List of ports
+                              items:
+                                properties:
+                                  endPort:
+                                    description: End port for port range specifications
+                                    type: integer
+                                  port:
+                                    anyOf:
+                                    - type: integer
+                                    - type: string
+                                    description: Port corresponds to the JSON schema
+                                      field "port".
+                                    x-kubernetes-int-or-string: true
+                                  protocol:
+                                    description: Protocol corresponds to the JSON
+                                      schema field "protocol".
+                                    type: string
+                                type: object
+                              type: array
+                            to:
+                              description: List of egress destinations
+                              items:
+                                properties:
+                                  ipBlock:
+                                    description: IP CIDR block
+                                    properties:
+                                      cidr:
+                                        description: CIDR corresponds to the JSON
+                                          schema field "cidr".
+                                        type: string
+                                      except:
+                                        description: Except corresponds to the JSON
+                                          schema field "except".
+                                        items:
+                                          type: string
+                                        type: array
+                                    type: object
+                                  namespaceSelector:
+                                    additionalProperties:
+                                      x-kubernetes-preserve-unknown-fields: true
+                                    description: Kubernetes namespace selector
+                                    type: object
+                                  podSelector:
+                                    additionalProperties:
+                                      x-kubernetes-preserve-unknown-fields: true
+                                    description: Kubernetes pod selector
+                                    type: object
+                                type: object
+                              type: array
+                          type: object
+                        description: Custom egress rule definitions that can be referenced
+                        type: object
+                      excludeCIDRs:
+                        description: CIDRs to exclude from all ipBlock egress policies
+                          (except literals)
+                        items:
+                          type: string
+                        type: array
+                      from:
+                        additionalProperties:
+                          x-kubernetes-preserve-unknown-fields: true
+                        description: Egress rules from local pods
+                        type: object
+                    type: object
+                  enabled:
+                    description: Enable network policies
+                    type: boolean
+                  hbonePortInjection:
+                    description: Istio HBONE port injection configuration
+                    properties:
+                      enabled:
+                        description: |-
+                          Enable/disable HBONE port (15008) injection into NetworkPolicy rules when ports
+                          are specified; ambient mode enables this automatically
+                        type: boolean
+                    type: object
+                  ingress:
+                    description: Ingress network policy configuration
+                    properties:
+                      defaults:
+                        description: Default ingress policies
+                        properties:
+                          allowInNamespace:
+                            description: Allow ingress from same namespace
+                            properties:
+                              enabled:
+                                description: Enabled corresponds to the JSON schema
+                                  field "enabled".
+                                type: boolean
+                            type: object
+                          allowPrometheusToIstioSidecar:
+                            description: Allow ingress from Prometheus in monitoring
+                              namespace (TCP port 15020)
+                            properties:
+                              enabled:
+                                description: Enabled corresponds to the JSON schema
+                                  field "enabled".
+                                type: boolean
+                            type: object
+                          denyAll:
+                            description: Deny all ingress by default
+                            properties:
+                              enabled:
+                                description: Enabled corresponds to the JSON schema
+                                  field "enabled".
+                                type: boolean
+                            type: object
+                          enabled:
+                            description: Enable all default ingress policies
+                            type: boolean
+                        type: object
+                      definitions:
+                        additionalProperties:
+                          description: Custom ingress rule definitions that can be
+                            referenced
+                          properties:
+                            from:
+                              description: List of ingress sources
+                              items:
+                                properties:
+                                  ipBlock:
+                                    description: IP CIDR block
+                                    properties:
+                                      cidr:
+                                        description: CIDR corresponds to the JSON
+                                          schema field "cidr".
+                                        type: string
+                                      except:
+                                        description: Except corresponds to the JSON
+                                          schema field "except".
+                                        items:
+                                          type: string
+                                        type: array
+                                    type: object
+                                  namespaceSelector:
+                                    additionalProperties:
+                                      x-kubernetes-preserve-unknown-fields: true
+                                    description: Kubernetes namespace selector
+                                    type: object
+                                  podSelector:
+                                    additionalProperties:
+                                      x-kubernetes-preserve-unknown-fields: true
+                                    description: Kubernetes pod selector
+                                    type: object
+                                type: object
+                              type: array
+                            ports:
+                              description: List of ports
+                              items:
+                                properties:
+                                  endPort:
+                                    description: End port for port range specifications
+                                    type: integer
+                                  port:
+                                    anyOf:
+                                    - type: integer
+                                    - type: string
+                                    description: Port corresponds to the JSON schema
+                                      field "port".
+                                    x-kubernetes-int-or-string: true
+                                  protocol:
+                                    description: Protocol corresponds to the JSON
+                                      schema field "protocol".
+                                    type: string
+                                type: object
+                              type: array
+                          type: object
+                        description: Custom ingress rule definitions that can be referenced
+                        type: object
+                      to:
+                        additionalProperties:
+                          x-kubernetes-preserve-unknown-fields: true
+                        description: Ingress rules to local pods
+                        type: object
+                    type: object
+                  prependReleaseName:
+                    description: Prepend release name to network policy names
+                    type: boolean
+                type: object
+              routes:
+                description: |-
+                  routes configures Istio inbound (VirtualService/ServiceEntry +
+                  NetworkPolicy/AuthorizationPolicy) and outbound (ServiceEntry) routing.
+                properties:
+                  inbound:
+                    additionalProperties:
+                      x-kubernetes-preserve-unknown-fields: true
+                    description: Inbound routes configuration
+                    type: object
+                  outbound:
+                    additionalProperties:
+                      x-kubernetes-preserve-unknown-fields: true
+                    description: Outbound routes configuration
+                    type: object
+                  prependReleaseName:
+                    description: Prepend release name to route resource names
+                    type: boolean
+                type: object
+            type: object
+          status:
+            description: status defines the observed state of Package
+            properties:
+              conditions:
+                description: |-
+                  conditions represent the current state of the Package resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Standard condition types include:
+                  - "Available": the resource is fully functional
+                  - "Progressing": the resource is being created or updated
+                  - "Degraded": the resource failed to reach or maintain its desired state
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
