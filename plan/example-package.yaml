@@ -1,0 +1,111 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: example-app
+  namespace: example-app
+spec:
+  # bb-common values passed through to the rendered templates.
+  # Mirrors the structure of bb-common/chart/values.yaml.
+  istio:
+    enabled: true
+    mtls:
+      mode: STRICT
+
+  networkPolicies:
+    enabled: true
+    # Default policies (denyAll, allowInNamespace, allowKubeDns, allowIstiod)
+    # are enabled by default when networkPolicies.enabled is true.
+
+    # Shorthand egress rules: select source pod by `app.kubernetes.io/name`,
+    # destination via `k8s.<namespace>/<pod>[:port]`. See
+    # bb-common/chart/tests/network-policies/egress_test.yaml.
+    egress:
+      from:
+        example-app:
+          to:
+            k8s:
+              # Allow Postgres traffic to a database pod in the `data` namespace.
+              data/postgres:5432: true
+              # Multiple ports in one rule.
+              data/redis:[6379,6380]: true
+        # `*` matches any source pod in the namespace.
+        "*":
+          to:
+            k8s:
+              # UDP DNS to kube-dns (in addition to the default allowKubeDns).
+              udp://kube-system/kube-dns:53: true
+
+    # Shorthand ingress rules: destination is `to.<name>` (matches the local
+    # pod by `app.kubernetes.io/name`), source via `from.k8s.<ns>/<pod>`.
+    ingress:
+      to:
+        example-app:
+          from:
+            k8s:
+              # Allow the public ingress gateway to reach this app on 8080.
+              istio-gateway/public-ingressgateway:8080: true
+              # Allow Prometheus to scrape metrics on 15020 (Envoy stats).
+              monitoring/prometheus:15020: true
+
+    # Raw NetworkPolicy specs for anything the shorthand can't express.
+    additionalPolicies:
+      - name: allow-egress-to-external-api
+        labels:
+          purpose: external-egress
+        annotations:
+          description: "Egress to api.example.com via the ServiceEntry"
+        spec:
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: example-app
+          policyTypes:
+            - Egress
+          egress:
+            - to:
+                - ipBlock:
+                    cidr: 0.0.0.0/0
+                    except:
+                      - 10.0.0.0/8
+                      - 172.16.0.0/12
+                      - 192.168.0.0/16
+              ports:
+                - protocol: TCP
+                  port: 443
+
+  routes:
+    inbound:
+      example-app:
+        enabled: true
+        gateways:
+          - istio-gateway/public-ingressgateway
+        hosts:
+          - example-app.bigbang.mil
+        service: example-app
+        port: 8080
+        # Used by the generated NetworkPolicy / AuthorizationPolicy
+        selector:
+          app.kubernetes.io/name: example-app
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: ResourcesApplied
+      message: bb-common resources reconciled
+  appliedResources:
+    - kind: PeerAuthentication
+      name: default-peer-auth
+    - kind: NetworkPolicy
+      name: allow-egress-from-example-app-to-ns-data-pod-postgres-tcp-port-5432
+    - kind: NetworkPolicy
+      name: allow-egress-from-example-app-to-ns-data-pod-redis-tcp-ports-6379-6380
+    - kind: NetworkPolicy
+      name: allow-egress-from-any-pod-to-ns-kube-system-pod-kube-dns-udp-port-53
+    - kind: NetworkPolicy
+      name: allow-ingress-to-example-app-tcp-port-8080-from-ns-istio-gateway-pod-public-ingressgateway
+    - kind: NetworkPolicy
+      name: allow-ingress-to-example-app-tcp-port-15020-from-ns-monitoring-pod-prometheus
+    - kind: NetworkPolicy
+      name: allow-egress-to-external-api
+    - kind: VirtualService
+      name: example-app
+  observedGeneration: 1
