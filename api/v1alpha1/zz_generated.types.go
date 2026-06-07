@@ -79,7 +79,7 @@ type IstioAuthorizationPolicies struct {
 	// Generate Istio AuthorizationPolicies from NetworkPolicy configurations with
 	// SPIFFE-based identity verification when service account identities are
 	// specified
-	GenerateFromNetpol bool `json:"generateFromNetpol,omitempty"`
+	GenerateFromNetpol *bool `json:"generateFromNetpol,omitempty"`
 }
 
 // Additional custom Istio AuthorizationPolicies (map structure to avoid override
@@ -168,19 +168,19 @@ type IstioAuthorizationPoliciesDefaults struct {
 	DenyAll *IstioAuthorizationPoliciesDefaultsDenyAll `json:"denyAll,omitempty"`
 
 	// Enable all default authorization policies
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Allow ingress from same namespace
 type IstioAuthorizationPoliciesDefaultsAllowInNamespace struct {
 	// Enabled corresponds to the JSON schema field "enabled".
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Deny all ingress by default (allow-nothing policy)
 type IstioAuthorizationPoliciesDefaultsDenyAll struct {
 	// Enabled corresponds to the JSON schema field "enabled".
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Mutual TLS configuration
@@ -274,7 +274,7 @@ type NetworkPoliciesDefaultsAsHooks struct {
 
 	// Enable hook creation for default policies (creates both regular and hook
 	// versions)
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 
 	// Helm hook types
 	Hooks []NetworkPoliciesDefaultsAsHooksHooksElem `json:"hooks,omitempty"`
@@ -332,32 +332,32 @@ type NetworkPoliciesEgressDefaults struct {
 	DenyAll *NetworkPoliciesEgressDefaultsDenyAll `json:"denyAll,omitempty"`
 
 	// Enable all default egress policies
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Allow egress within the same namespace
 type NetworkPoliciesEgressDefaultsAllowInNamespace struct {
 	// Enabled corresponds to the JSON schema field "enabled".
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Allow sidecar-mode Istio control plane communication (TCP port 15012). Not
 // rendered when ambient mode is enabled.
 type NetworkPoliciesEgressDefaultsAllowIstiod struct {
 	// Enabled corresponds to the JSON schema field "enabled".
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Allow DNS resolution (TCP/UDP port 53)
 type NetworkPoliciesEgressDefaultsAllowKubeDNS struct {
 	// Enabled corresponds to the JSON schema field "enabled".
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Deny all egress by default
 type NetworkPoliciesEgressDefaultsDenyAll struct {
 	// Enabled corresponds to the JSON schema field "enabled".
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Custom egress rule definitions that can be referenced
@@ -448,25 +448,25 @@ type NetworkPoliciesIngressDefaults struct {
 	DenyAll *NetworkPoliciesIngressDefaultsDenyAll `json:"denyAll,omitempty"`
 
 	// Enable all default ingress policies
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Allow ingress from same namespace
 type NetworkPoliciesIngressDefaultsAllowInNamespace struct {
 	// Enabled corresponds to the JSON schema field "enabled".
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Allow ingress from Prometheus in monitoring namespace (TCP port 15020)
 type NetworkPoliciesIngressDefaultsAllowPrometheusToIstioSidecar struct {
 	// Enabled corresponds to the JSON schema field "enabled".
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Deny all ingress by default
 type NetworkPoliciesIngressDefaultsDenyAll struct {
 	// Enabled corresponds to the JSON schema field "enabled".
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Custom ingress rule definitions that can be referenced

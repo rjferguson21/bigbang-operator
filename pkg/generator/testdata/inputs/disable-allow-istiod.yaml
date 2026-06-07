@@ -1,0 +1,18 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: example-app
+  namespace: example-app
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  istio:
+    enabled: true
+  networkPolicies:
+    enabled: true
+    # Explicitly disable the allow-istiod default while keeping all other
+    # defaults on. Output should be 6 default policies (no
+    # default-egress-allow-istiod) instead of the usual 7.
+    egress:
+      defaults:
+        allowIstiod:
+          enabled: false

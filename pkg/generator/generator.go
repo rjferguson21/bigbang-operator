@@ -57,6 +57,17 @@ func Generate(in Input) ([]client.Object, error) {
 		out = append(out, objs...)
 	}
 
+	// AuthorizationPolicies live in their own pass because they depend on
+	// both istio and networkPolicies state.
+	out = append(out, generateDefaultAuthzPolicies(in.Package, spec.Istio, spec.NetworkPolicies)...)
+	if spec.NetworkPolicies != nil {
+		aps, err := generateAuthzFromIngressShorthand(in.Package, spec.NetworkPolicies, spec.Istio)
+		if err != nil {
+			return nil, fmt.Errorf("authorizationPolicies: %w", err)
+		}
+		out = append(out, aps...)
+	}
+
 	for _, o := range out {
 		stampMetadata(in.Package, o)
 		if err := setGVK(in.Scheme, o); err != nil {

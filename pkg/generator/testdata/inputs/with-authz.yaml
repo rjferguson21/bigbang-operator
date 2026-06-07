@@ -1,0 +1,21 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: example-app
+  namespace: example-app
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  istio:
+    enabled: true
+    authorizationPolicies:
+      enabled: true
+      # generateFromNetpol defaults to true; left implicit.
+  networkPolicies:
+    enabled: true
+    ingress:
+      to:
+        example-app:8080:
+          from:
+            k8s:
+              istio-gateway/public-ingressgateway: true
+              alloy-singleton@alloy/alloy-singleton: true

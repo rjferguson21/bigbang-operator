@@ -126,6 +126,7 @@ func managedListKinds() []client.ObjectList {
 	return []client.ObjectList{
 		&networkingv1.NetworkPolicyList{},
 		&istiosecv1.PeerAuthenticationList{},
+		&istiosecv1.AuthorizationPolicyList{},
 		&istionetv1.VirtualServiceList{},
 		&istionetv1.ServiceEntryList{},
 	}
@@ -140,6 +141,12 @@ func extractItems(list client.ObjectList) ([]client.Object, error) {
 		}
 		return out, nil
 	case *istiosecv1.PeerAuthenticationList:
+		out := make([]client.Object, len(l.Items))
+		for i := range l.Items {
+			out[i] = l.Items[i]
+		}
+		return out, nil
+	case *istiosecv1.AuthorizationPolicyList:
 		out := make([]client.Object, len(l.Items))
 		for i := range l.Items {
 			out[i] = l.Items[i]
@@ -241,6 +248,11 @@ var _ = schema.GroupKind{}
 func (r *PackageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&bbv1alpha1.Package{}).
+		Owns(&networkingv1.NetworkPolicy{}).
+		Owns(&istiosecv1.PeerAuthentication{}).
+		Owns(&istiosecv1.AuthorizationPolicy{}).
+		Owns(&istionetv1.VirtualService{}).
+		Owns(&istionetv1.ServiceEntry{}).
 		Named("package").
 		Complete(r)
 }

@@ -96,6 +96,40 @@ while i < len(lines):
 open(path, 'w').write(''.join(out))
 PY
 
+# Promote `Enabled bool` to `Enabled *bool` inside per-default toggle
+# structs. The naming convention is `<group>Defaults` for the parent and
+# `<group>Defaults<DenyAll|Allow*>` for each per-default. With plain
+# `bool`, unset can't be distinguished from explicit false — so the
+# generator can't honor `egress.defaults.allowIstiod.enabled: false`.
+# A `*bool` makes "absent" (treat as enabled per bb-common) distinct from
+# "explicitly false" (skip).
+python3 - "${OUT}.tmp" <<'PY'
+import re, sys
+path = sys.argv[1]
+src = open(path).read()
+default_struct_re = re.compile(
+    r'(?m)^(type ([A-Z][a-zA-Z0-9]*Defaults(?:[A-Z][a-zA-Z0-9]*)?) struct \{\n)'
+    r'((?:.*\n)*?)(^\}\n)'
+)
+def promote(m):
+    head, name, body, tail = m.group(1), m.group(2), m.group(3), m.group(4)
+    promoted = re.sub(
+        r'\bEnabled bool `json:"enabled,omitempty"`',
+        'Enabled *bool `json:"enabled,omitempty"`',
+        body,
+    )
+    return head + promoted + tail
+src = default_struct_re.sub(promote, src)
+# Also promote bb-common's other "default-true" toggles that don't live in
+# a Defaults struct. `GenerateFromNetpol` is the only such case today.
+src = re.sub(
+    r'(GenerateFromNetpol) bool (`json:"generateFromNetpol,omitempty"`)',
+    r'\1 *bool \2',
+    src,
+)
+open(path, 'w').write(src)
+PY
+
 # Drop unused root-level types: the unexported bbCommonValues wrapper and
 # its companions Global and SelfTest aren't part of PackageSpec.
 python3 - "${OUT}.tmp" <<'PY'

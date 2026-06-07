@@ -2,6 +2,8 @@ package generator
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -12,18 +14,28 @@ import (
 	bbv1alpha1 "bigbang.dev/operator/api/v1alpha1"
 )
 
-// generateNetworkPolicies renders default NetworkPolicies and any raw
-// policies declared under `additionalPolicies[]`.
-//
-// v1 scope: defaults + additionalPolicies. Shorthand `egress.from.*` and
-// `ingress.to.*` are deferred — those fields use patternProperties in the
-// JSON schema and currently land as `map[string]apiextensionsv1.JSON` in
-// the generated Go types; decoding them needs follow-up work.
+// generateNetworkPolicies renders default NetworkPolicies, shorthand
+// egress/ingress, and raw policies declared under `additionalPolicies[]`.
 func generateNetworkPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies, istio *bbv1alpha1.Istio) ([]client.Object, error) {
 	var out []client.Object
 
 	out = append(out, defaultEgressPolicies(pkg, spec, istio)...)
 	out = append(out, defaultIngressPolicies(pkg, spec)...)
+
+	if spec.Egress != nil {
+		objs, err := expandShorthandEgress(pkg, spec)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, objs...)
+	}
+	if spec.Ingress != nil {
+		objs, err := expandShorthandIngress(pkg, spec)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, objs...)
+	}
 
 	for _, raw := range spec.AdditionalPolicies {
 		np, err := buildAdditionalPolicy(pkg, spec, raw)
@@ -43,12 +55,298 @@ func generateNetworkPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPo
 	return out, nil
 }
 
+// shorthandSource is one decoded `egress.from.<src>` or `ingress.to.<dst>`
+// outer-map value. The inner `to.k8s` / `from.k8s` maps use the same
+// pattern: `<key> -> true | { enabled, podSelector?, namespaceSelector? }`.
+type shorthandSource struct {
+	PodSelector map[string]string `json:"podSelector,omitempty"`
+	To          *shorthandPeer    `json:"to,omitempty"`   // egress
+	From        *shorthandPeer    `json:"from,omitempty"` // ingress
+}
+
+type shorthandPeer struct {
+	K8s map[string]shorthandTarget `json:"k8s,omitempty"`
+	// CIDR, Definition, Literal generators are not yet implemented; bb-common
+	// also supports those four under `to`/`from` but they're deferred here.
+}
+
+// shorthandTarget accepts either a bool (the common "true" form) or an
+// object with `enabled` and selector overrides. Custom unmarshaler handles
+// both.
+type shorthandTarget struct {
+	Enabled           bool              `json:"enabled,omitempty"`
+	PodSelector       map[string]string `json:"-"`
+	NamespaceSelector map[string]string `json:"-"`
+}
+
+func (t *shorthandTarget) UnmarshalJSON(b []byte) error {
+	if len(b) == 4 && string(b) == "true" {
+		t.Enabled = true
+		return nil
+	}
+	if len(b) == 5 && string(b) == "false" {
+		t.Enabled = false
+		return nil
+	}
+	// Object form. Tolerate matchLabels nesting on the selectors.
+	var raw struct {
+		Enabled           *bool                  `json:"enabled,omitempty"`
+		PodSelector       map[string]interface{} `json:"podSelector,omitempty"`
+		NamespaceSelector map[string]interface{} `json:"namespaceSelector,omitempty"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	t.Enabled = raw.Enabled == nil || *raw.Enabled
+	t.PodSelector = flattenMatchLabels(raw.PodSelector)
+	t.NamespaceSelector = flattenMatchLabels(raw.NamespaceSelector)
+	return nil
+}
+
+func flattenMatchLabels(m map[string]interface{}) map[string]string {
+	if m == nil {
+		return nil
+	}
+	if ml, ok := m["matchLabels"].(map[string]interface{}); ok {
+		out := make(map[string]string, len(ml))
+		for k, v := range ml {
+			if s, ok := v.(string); ok {
+				out[k] = s
+			}
+		}
+		return out
+	}
+	// Allow flat `{key: value}` too.
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		if s, ok := v.(string); ok {
+			out[k] = s
+		}
+	}
+	return out
+}
+
+func expandShorthandEgress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies) ([]client.Object, error) {
+	prepend := spec.PrependReleaseName
+	npLabels := defaultNetpolLabels("egress")
+	var out []client.Object
+	for _, localKey := range sortedKeys(spec.Egress.From) {
+		var local shorthandSource
+		if err := json.Unmarshal(spec.Egress.From[localKey].Raw, &local); err != nil {
+			return nil, fmt.Errorf("networkPolicies.egress.from.%s: %w", localKey, err)
+		}
+		if local.To == nil {
+			continue
+		}
+		for _, remoteKey := range sortedKeys(local.To.K8s) {
+			target := local.To.K8s[remoteKey]
+			if !target.Enabled {
+				continue
+			}
+			remote, err := parseEgressRemoteKey(remoteKey)
+			if err != nil {
+				return nil, fmt.Errorf("networkPolicies.egress.from.%s.to.k8s: %w", localKey, err)
+			}
+			np := buildShorthandEgressNetpol(pkg, prepend, npLabels, localKey, local, remoteKey, remote, target)
+			out = append(out, np)
+		}
+	}
+	return out, nil
+}
+
+func expandShorthandIngress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies) ([]client.Object, error) {
+	prepend := spec.PrependReleaseName
+	npLabels := defaultNetpolLabels("ingress")
+	var out []client.Object
+	for _, localKey := range sortedKeys(spec.Ingress.To) {
+		var local shorthandSource
+		if err := json.Unmarshal(spec.Ingress.To[localKey].Raw, &local); err != nil {
+			return nil, fmt.Errorf("networkPolicies.ingress.to.%s: %w", localKey, err)
+		}
+		if local.From == nil {
+			continue
+		}
+		parsedLocal, err := parseIngressLocalKey(localKey)
+		if err != nil {
+			return nil, fmt.Errorf("networkPolicies.ingress.to: %w", err)
+		}
+		for _, remoteKey := range sortedKeys(local.From.K8s) {
+			target := local.From.K8s[remoteKey]
+			if !target.Enabled {
+				continue
+			}
+			remote, err := parseIngressRemoteKey(remoteKey)
+			if err != nil {
+				return nil, fmt.Errorf("networkPolicies.ingress.to.%s.from.k8s: %w", localKey, err)
+			}
+			np := buildShorthandIngressNetpol(pkg, prepend, npLabels, parsedLocal, local, remoteKey, remote, target)
+			out = append(out, np)
+		}
+	}
+	return out, nil
+}
+
+func buildShorthandEgressNetpol(pkg *bbv1alpha1.Package, prepend bool, npLabels map[string]string, localKey string, local shorthandSource, remoteKey string, remote *parsedK8sRemote, target shorthandTarget) *networkingv1.NetworkPolicy {
+	// Local pod selector — the "source" pod the rule applies to.
+	srcSelector := metav1.LabelSelector{}
+	if localKey != "*" {
+		srcSelector.MatchLabels = map[string]string{"app.kubernetes.io/name": localKey}
+	}
+	if len(local.PodSelector) > 0 {
+		srcSelector = metav1.LabelSelector{MatchLabels: local.PodSelector}
+	}
+
+	// Remote selectors with override support.
+	remoteNS := remoteNamespaceSelector(remote.Namespace, target.NamespaceSelector)
+	remotePod := remotePodSelector(remote.Pod, target.PodSelector)
+
+	// Local name prefix and segments per bb-common.
+	localName := localKey
+	if localName == "*" {
+		localName = "any-pod"
+	}
+	name := fmt.Sprintf("allow-egress-from-%s", localName)
+	if remote.Namespace == "*" {
+		name += "-to-any-ns"
+	} else {
+		name += "-to-ns-" + remote.Namespace
+	}
+	if remote.Pod != "" && remote.Pod != "*" {
+		name += "-pod-" + remote.Pod
+	} else {
+		name += "-any-pod"
+	}
+	if len(remote.Ports) > 0 {
+		name += "-" + strings.ToLower(remote.Protocol)
+	}
+	name += "-" + namePortSuffix(remote.Ports, remote.HasPortRange)
+	name = prependName(prepend, pkg.Name, name)
+
+	ports := buildNetpolPorts(remote.Protocol, remote.Ports, remote.HasPortRange)
+
+	return &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   name,
+			Labels: cloneLabels(npLabels),
+			Annotations: map[string]string{
+				"generated.network-policies.bigbang.dev/local-key":  localKey,
+				"generated.network-policies.bigbang.dev/remote-key": remoteKey,
+			},
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: srcSelector,
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
+			Egress: []networkingv1.NetworkPolicyEgressRule{{
+				To:    []networkingv1.NetworkPolicyPeer{{NamespaceSelector: remoteNS, PodSelector: remotePod}},
+				Ports: ports,
+			}},
+		},
+	}
+}
+
+func buildShorthandIngressNetpol(pkg *bbv1alpha1.Package, prepend bool, npLabels map[string]string, parsedLocal *parsedLocalIngressKey, local shorthandSource, remoteKey string, remote *parsedK8sRemote, target shorthandTarget) *networkingv1.NetworkPolicy {
+	// Local pod selector — the "destination" pod the rule applies to.
+	dstSelector := metav1.LabelSelector{MatchLabels: map[string]string{"app.kubernetes.io/name": parsedLocal.Pod}}
+	if len(local.PodSelector) > 0 {
+		dstSelector = metav1.LabelSelector{MatchLabels: local.PodSelector}
+	}
+
+	remoteNS := remoteNamespaceSelector(remote.Namespace, target.NamespaceSelector)
+	remotePod := remotePodSelector(remote.Pod, target.PodSelector)
+
+	name := fmt.Sprintf("allow-ingress-to-%s", parsedLocal.Pod)
+	if parsedLocal.Protocol != "" && parsedLocal.Protocol != "TCP" {
+		name += "-" + strings.ToLower(parsedLocal.Protocol)
+	}
+	if len(parsedLocal.Ports) > 0 {
+		name += "-" + strings.ToLower(parsedLocal.Protocol)
+	}
+	name += "-" + namePortSuffix(parsedLocal.Ports, parsedLocal.HasPortRange)
+	if remote.Namespace == "*" {
+		name += "-from-any-ns"
+	} else {
+		name += "-from-ns-" + remote.Namespace
+	}
+	if remote.Pod != "" && remote.Pod != "*" {
+		name += "-pod-" + remote.Pod
+	} else {
+		name += "-any-pod"
+	}
+	name = prependName(prepend, pkg.Name, name)
+
+	ports := buildNetpolPorts(parsedLocal.Protocol, parsedLocal.Ports, parsedLocal.HasPortRange)
+
+	return &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   name,
+			Labels: cloneLabels(npLabels),
+			Annotations: map[string]string{
+				"generated.network-policies.bigbang.dev/local-key":  parsedLocal.Pod,
+				"generated.network-policies.bigbang.dev/remote-key": remoteKey,
+			},
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: dstSelector,
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From:  []networkingv1.NetworkPolicyPeer{{NamespaceSelector: remoteNS, PodSelector: remotePod}},
+				Ports: ports,
+			}},
+		},
+	}
+}
+
+func remoteNamespaceSelector(ns string, override map[string]string) *metav1.LabelSelector {
+	if len(override) > 0 {
+		return &metav1.LabelSelector{MatchLabels: override}
+	}
+	if ns == "*" {
+		return &metav1.LabelSelector{}
+	}
+	return &metav1.LabelSelector{
+		MatchLabels: map[string]string{"kubernetes.io/metadata.name": ns},
+	}
+}
+
+func remotePodSelector(pod string, override map[string]string) *metav1.LabelSelector {
+	if len(override) > 0 {
+		return &metav1.LabelSelector{MatchLabels: override}
+	}
+	if pod == "" || pod == "*" {
+		return &metav1.LabelSelector{}
+	}
+	return &metav1.LabelSelector{
+		MatchLabels: map[string]string{"app.kubernetes.io/name": pod},
+	}
+}
+
+func buildNetpolPorts(protocol string, ports []int, hasRange bool) []networkingv1.NetworkPolicyPort {
+	if len(ports) == 0 {
+		return nil
+	}
+	proto := corev1.ProtocolTCP
+	if strings.ToUpper(protocol) == "UDP" {
+		proto = corev1.ProtocolUDP
+	}
+	if hasRange && len(ports) == 2 {
+		begin := intstr.FromInt(ports[0])
+		end := int32(ports[1])
+		return []networkingv1.NetworkPolicyPort{{Protocol: &proto, Port: &begin, EndPort: &end}}
+	}
+	out := make([]networkingv1.NetworkPolicyPort, 0, len(ports))
+	for _, p := range ports {
+		port := intstr.FromInt(p)
+		out = append(out, networkingv1.NetworkPolicyPort{Protocol: &proto, Port: &port})
+	}
+	return out
+}
+
 func defaultEgressPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies, istio *bbv1alpha1.Istio) []client.Object {
 	prepend := spec.PrependReleaseName
 	npLabels := defaultNetpolLabels("egress")
 	var out []client.Object
 
-	if emitDefault() {
+	if egressDenyAll(spec) {
 		out = append(out, &networkingv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   prependName(prepend, pkg.Name, "default-egress-deny-all"),
@@ -60,7 +358,7 @@ func defaultEgressPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPoli
 			},
 		})
 	}
-	if emitDefault() {
+	if egressAllowInNS(spec) {
 		out = append(out, &networkingv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   prependName(prepend, pkg.Name, "default-egress-allow-all-in-ns"),
@@ -77,7 +375,7 @@ func defaultEgressPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPoli
 			},
 		})
 	}
-	if emitDefault() {
+	if egressAllowKubeDNS(spec) {
 		port53 := intstr.FromInt(53)
 		udp := corev1.ProtocolUDP
 		tcp := corev1.ProtocolTCP
@@ -106,7 +404,7 @@ func defaultEgressPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPoli
 			},
 		})
 	}
-	if emitDefault() && !istioAmbient(istio) {
+	if egressAllowIstiod(spec) && !istioAmbient(istio) {
 		port15012 := intstr.FromInt(15012)
 		tcp := corev1.ProtocolTCP
 		out = append(out, &networkingv1.NetworkPolicy{
@@ -139,7 +437,7 @@ func defaultIngressPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPol
 	npLabels := defaultNetpolLabels("ingress")
 	var out []client.Object
 
-	if emitDefault() {
+	if ingressDenyAll(spec) {
 		out = append(out, &networkingv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   prependName(prepend, pkg.Name, "default-ingress-deny-all"),
@@ -151,7 +449,7 @@ func defaultIngressPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPol
 			},
 		})
 	}
-	if emitDefault() {
+	if ingressAllowInNS(spec) {
 		out = append(out, &networkingv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   prependName(prepend, pkg.Name, "default-ingress-allow-all-in-ns"),
@@ -168,7 +466,7 @@ func defaultIngressPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPol
 			},
 		})
 	}
-	if emitDefault() {
+	if ingressAllowPromToSidecar(spec) {
 		port15020 := intstr.FromInt(15020)
 		tcp := corev1.ProtocolTCP
 		out = append(out, &networkingv1.NetworkPolicy{
@@ -216,18 +514,84 @@ func buildAdditionalPolicy(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPoli
 	return np, nil
 }
 
-// emitDefault returns whether to emit a default policy. v1 always emits all
-// defaults when networkPolicies.enabled is true; per-default disabling needs
-// the schema-to-go script to emit *bool for these fields (today they're plain
-// bool, so unset == false and we can't tell intent).
-func emitDefault() bool {
-	return true
+// defaultEnabled returns true unless the *bool is explicitly false. Nil is
+// treated as enabled, matching bb-common's implicit-true behavior.
+func defaultEnabled(b *bool) bool {
+	return b == nil || *b
+}
+
+// egressSideEnabled returns true when egress defaults aren't explicitly
+// disabled (egress.defaults.enabled: false collapses all egress defaults).
+func egressSideEnabled(spec *bbv1alpha1.NetworkPolicies) bool {
+	if spec.Egress == nil || spec.Egress.Defaults == nil {
+		return true
+	}
+	return defaultEnabled(spec.Egress.Defaults.Enabled)
+}
+
+// ingressSideEnabled is the ingress counterpart of egressSideEnabled.
+func ingressSideEnabled(spec *bbv1alpha1.NetworkPolicies) bool {
+	if spec.Ingress == nil || spec.Ingress.Defaults == nil {
+		return true
+	}
+	return defaultEnabled(spec.Ingress.Defaults.Enabled)
+}
+
+// Per-default getters: each returns true unless the per-default is
+// explicitly disabled. Missing sub-structs are treated as enabled.
+func egressDenyAll(spec *bbv1alpha1.NetworkPolicies) bool {
+	if !egressSideEnabled(spec) || spec.Egress == nil || spec.Egress.Defaults == nil || spec.Egress.Defaults.DenyAll == nil {
+		return egressSideEnabled(spec)
+	}
+	return defaultEnabled(spec.Egress.Defaults.DenyAll.Enabled)
+}
+
+func egressAllowInNS(spec *bbv1alpha1.NetworkPolicies) bool {
+	if !egressSideEnabled(spec) || spec.Egress == nil || spec.Egress.Defaults == nil || spec.Egress.Defaults.AllowInNamespace == nil {
+		return egressSideEnabled(spec)
+	}
+	return defaultEnabled(spec.Egress.Defaults.AllowInNamespace.Enabled)
+}
+
+func egressAllowKubeDNS(spec *bbv1alpha1.NetworkPolicies) bool {
+	if !egressSideEnabled(spec) || spec.Egress == nil || spec.Egress.Defaults == nil || spec.Egress.Defaults.AllowKubeDNS == nil {
+		return egressSideEnabled(spec)
+	}
+	return defaultEnabled(spec.Egress.Defaults.AllowKubeDNS.Enabled)
+}
+
+func egressAllowIstiod(spec *bbv1alpha1.NetworkPolicies) bool {
+	if !egressSideEnabled(spec) || spec.Egress == nil || spec.Egress.Defaults == nil || spec.Egress.Defaults.AllowIstiod == nil {
+		return egressSideEnabled(spec)
+	}
+	return defaultEnabled(spec.Egress.Defaults.AllowIstiod.Enabled)
+}
+
+func ingressDenyAll(spec *bbv1alpha1.NetworkPolicies) bool {
+	if !ingressSideEnabled(spec) || spec.Ingress == nil || spec.Ingress.Defaults == nil || spec.Ingress.Defaults.DenyAll == nil {
+		return ingressSideEnabled(spec)
+	}
+	return defaultEnabled(spec.Ingress.Defaults.DenyAll.Enabled)
+}
+
+func ingressAllowInNS(spec *bbv1alpha1.NetworkPolicies) bool {
+	if !ingressSideEnabled(spec) || spec.Ingress == nil || spec.Ingress.Defaults == nil || spec.Ingress.Defaults.AllowInNamespace == nil {
+		return ingressSideEnabled(spec)
+	}
+	return defaultEnabled(spec.Ingress.Defaults.AllowInNamespace.Enabled)
+}
+
+func ingressAllowPromToSidecar(spec *bbv1alpha1.NetworkPolicies) bool {
+	if !ingressSideEnabled(spec) || spec.Ingress == nil || spec.Ingress.Defaults == nil || spec.Ingress.Defaults.AllowPrometheusToIstioSidecar == nil {
+		return ingressSideEnabled(spec)
+	}
+	return defaultEnabled(spec.Ingress.Defaults.AllowPrometheusToIstioSidecar.Enabled)
 }
 
 func defaultNetpolLabels(direction string) map[string]string {
 	return map[string]string{
-		LabelNetpolSource:                            LabelNetpolSourceValue,
-		"network-policies.bigbang.dev/direction":     direction,
+		LabelNetpolSource:                        LabelNetpolSourceValue,
+		"network-policies.bigbang.dev/direction": direction,
 	}
 }
 
