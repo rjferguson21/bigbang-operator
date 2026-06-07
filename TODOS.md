@@ -159,6 +159,13 @@ group are roughly ordered by recommended sequence (highest first).
   builds the manager binary. Lint runs golangci-lint v2.5.0 with `pkg/*`
   excluded from `lll`/`prealloc` (long generator signatures are inherent).
   All three workflows green on main; first run ~5 min, cached run ~1 min.
+- [x] **Container + chart distribution (GHCR)** —
+  `.github/workflows/image.yml` builds multi-arch (amd64/arm64) and pushes
+  to `ghcr.io/rjferguson21/bigbang-operator` on every main push (tags
+  `main`, `sha-<short>`). On `v*` git tags it also pushes semver image
+  tags + the helm chart to `oci://ghcr.io/rjferguson21/charts/bigbang-operator`
+  (chart version aligned with the git tag). README has the install
+  recipe.
 - [ ] **Iron Bank image** — replace the local `:dev` flow with an
   immutable tag from `registry1.dso.mil`. Removes the need for the
   PolicyException in production.

@@ -1,135 +1,91 @@
 # bigbang-operator
-// TODO(user): Add simple overview of use/purpose
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+A Kubernetes operator that reconciles a `Package` CR into the same set of
+Istio + NetworkPolicy resources that Big Bang's
+[`bb-common`](https://repo1.dso.mil/big-bang/product/packages/bb-common)
+Helm chart emits — but as a controller, with status conditions, drift
+recovery, and prune-on-spec-change instead of `helm upgrade`.
 
-## Getting Started
+## What it emits
 
-### Prerequisites
-- go version v1.24.6+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+For a `Package` with all features on, the operator produces:
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+- **Istio**: `PeerAuthentication`, `Sidecar`, default `AuthorizationPolicy`
+  resources, plus generated APs from NetworkPolicy shorthand and per-route
+  APs that pin gateway-to-workload traffic to the gateway's ServiceAccount.
+- **NetworkPolicies**: 7 baseline policies (deny-all, allow-in-ns,
+  kube-DNS, istiod, prometheus-to-sidecar, ambient-kubelet, allow-all-in-ns)
+  plus shorthand K8s/CIDR/definition rules with HBONE port-15008 injection
+  under ambient mode.
+- **Routes**: `VirtualService` + `ServiceEntry` per inbound, gateway-permitting
+  `NetworkPolicy`, TLS passthrough mode, advanced HTTP rules
+  (match/rewrite/retries/fault), and outbound `ServiceEntry`.
 
-```sh
-make docker-build docker-push IMG=<some-registry>/bigbang-operator:tag
-```
+See `plan/` for the design docs and `TODOS.md` for the in-flight roadmap.
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+## Install
 
-**Install the CRDs into the cluster:**
-
-```sh
-make install
-```
-
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+The image is published to `ghcr.io/rjferguson21/bigbang-operator` and the
+helm chart to `oci://ghcr.io/rjferguson21/charts/bigbang-operator`.
 
 ```sh
-make deploy IMG=<some-registry>/bigbang-operator:tag
+helm install bigbang-operator \
+  oci://ghcr.io/rjferguson21/charts/bigbang-operator \
+  --version 0.1.0 \
+  --namespace bigbang-operator --create-namespace
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
-
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+On a Big Bang cluster the Kyverno `restrict-image-registries` policy
+blocks ghcr.io. Apply the dev PolicyException first:
 
 ```sh
-kubectl apply -k config/samples/
+kubectl apply -f hack/local-dev/policy-exception.yaml
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
-
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+For Iron Bank-hardened deploys, override the image repo:
 
 ```sh
-kubectl delete -k config/samples/
+helm install bigbang-operator \
+  oci://ghcr.io/rjferguson21/charts/bigbang-operator \
+  --version 0.1.0 \
+  --namespace bigbang-operator --create-namespace \
+  --set image.repository=registry1.dso.mil/ironbank/big-bang/bigbang-operator
 ```
 
-**Delete the APIs(CRDs) from the cluster:**
+## Try it
+
+Apply a sample `Package`:
 
 ```sh
-make uninstall
+kubectl apply -f config/samples/bigbang_v1alpha1_package.yaml
+kubectl get packages -A          # READY / REASON / AGE columns
+kubectl -n example-app get peerauthentication,networkpolicy,virtualservice,serviceentry,authorizationpolicy
 ```
 
-**UnDeploy the controller from the cluster:**
+More samples under `config/samples/`. The `test/e2e/podinfo_smoke.sh`
+script deploys the upstream podinfo chart and a `Package` shaped after
+Big Bang's
+[podinfo values](https://repo1.dso.mil/big-bang/product/maintained/podinfo/-/blob/main/chart/values.yaml)
+end-to-end — `make podinfo-smoke` runs it.
+
+## Develop
 
 ```sh
-make undeploy
+make dev-bbcluster   # bbtask default DISABLE_CORE=true (k3d + Big Bang)
+make dev-deploy      # build, import to k3d, apply CRD + chart
+make bb-smoke        # reconciler scenarios against the live cluster
+make dev-undeploy
 ```
 
-## Project Distribution
-
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
+Inner loop (operator out-of-cluster, fastest):
 
 ```sh
-make build-installer IMG=<some-registry>/bigbang-operator:tag
+make install         # CRDs only
+make run             # manager against current kubeconfig
 ```
 
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/bigbang-operator/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-kubebuilder edit --plugins=helm/v2-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+Tests: `make test` runs the generator goldens + the envtest reconciler suite.
 
 ## License
 
-Copyright 2026 Big Bang.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+Apache 2.0 — see `LICENSE` headers.
