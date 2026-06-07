@@ -165,7 +165,7 @@ func buildEgressDefinitionNetpol(pkg *bbv1alpha1.Package, prepend bool, npLabels
 
 	localName := localKey
 	if localName == "*" {
-		localName = "any-pod"
+		localName = nameAnyPod
 	}
 	name := prependName(prepend, pkg.Name, fmt.Sprintf("allow-egress-from-%s-to-%s", localName, lowercase(defName)))
 
@@ -204,7 +204,7 @@ func buildIngressDefinitionNetpol(pkg *bbv1alpha1.Package, prepend bool, npLabel
 	}
 
 	name := fmt.Sprintf("allow-ingress-to-%s", parsedLocal.Pod)
-	if parsedLocal.Protocol != "" && parsedLocal.Protocol != "TCP" {
+	if parsedLocal.Protocol != "" && parsedLocal.Protocol != protoTCP {
 		name += "-" + lowercase(parsedLocal.Protocol)
 	}
 	if len(parsedLocal.Ports) > 0 {

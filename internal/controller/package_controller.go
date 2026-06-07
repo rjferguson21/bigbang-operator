@@ -195,6 +195,12 @@ func objectKey(o client.Object) string {
 	return fmt.Sprintf("%s|%s|%s", gvk.String(), o.GetNamespace(), o.GetName())
 }
 
+// markFailed returns ctrl.Result{} unconditionally so it can be used as a
+// direct tail-call from Reconcile. The empty Result is required by the
+// controller-runtime signature; lint sees it as always-nil but it is part
+// of the contract.
+//
+//nolint:unparam
 func (r *PackageReconciler) markFailed(ctx context.Context, pkg *bbv1alpha1.Package, reason string, err error) (ctrl.Result, error) {
 	setCondition(pkg, metav1.Condition{
 		Type:               "Ready",
@@ -210,6 +216,7 @@ func (r *PackageReconciler) markFailed(ctx context.Context, pkg *bbv1alpha1.Pack
 	return ctrl.Result{}, err
 }
 
+//nolint:unparam // ctrl.Result is required by the controller-runtime contract.
 func (r *PackageReconciler) markReady(ctx context.Context, pkg *bbv1alpha1.Package, desired []client.Object) (ctrl.Result, error) {
 	setCondition(pkg, metav1.Condition{
 		Type:               "Ready",

@@ -236,7 +236,7 @@ func buildInboundServiceEntry(pkg *bbv1alpha1.Package, prepend bool, name string
 	}
 }
 
-func buildInboundNetpols(pkg *bbv1alpha1.Package, prepend bool, name string, r *bbv1alpha1.InboundRoute) []client.Object {
+func buildInboundNetpols(pkg *bbv1alpha1.Package, prepend bool, _ string, r *bbv1alpha1.InboundRoute) []client.Object {
 	out := make([]client.Object, 0, len(r.Gateways))
 	for _, gw := range r.Gateways {
 		gwNS, gwName, ok := splitGateway(gw)

@@ -36,6 +36,15 @@ linters:
           - dupl
           - lll
         path: internal/*
+      # pkg/generator function signatures are inherently long because the
+      # builders take many typed params (pkg, spec, prepend, labels, local,
+      # remote, target...). prealloc warns on collection patterns where the
+      # final size depends on user spec — pre-allocating with len(input) is
+      # wrong because not every input entry is enabled.
+      - linters:
+          - lll
+          - prealloc
+        path: pkg/*
     paths:
       - third_party$
       - builtin$

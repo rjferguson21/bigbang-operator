@@ -19,6 +19,16 @@ import (
 // metadata service. Stripped from every egress ipBlock that contains it.
 var defaultEgressExcludeCIDRs = []string{"169.254.169.254/32"}
 
+const (
+	// cidrAnywhere is the open-internet CIDR; rendered as "anywhere" in
+	// generated NetworkPolicy/AP names.
+	cidrAnywhere = "0.0.0.0/0"
+
+	// nameAnyPod is the placeholder used in NetworkPolicy names when the
+	// local shorthand key is "*" (rule applies to every pod in the namespace).
+	nameAnyPod = "any-pod"
+)
+
 // generateNetworkPolicies renders default NetworkPolicies, shorthand
 // egress/ingress, and raw policies declared under `additionalPolicies[]`.
 func generateNetworkPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies, istio *bbv1alpha1.Istio) ([]client.Object, error) {
@@ -274,7 +284,7 @@ func buildShorthandEgressNetpol(pkg *bbv1alpha1.Package, prepend bool, npLabels 
 	// Local name prefix and segments per bb-common.
 	localName := localKey
 	if localName == "*" {
-		localName = "any-pod"
+		localName = nameAnyPod
 	}
 	name := fmt.Sprintf("allow-egress-from-%s", localName)
 	if remote.Namespace == "*" {
@@ -326,7 +336,7 @@ func buildShorthandIngressNetpol(pkg *bbv1alpha1.Package, prepend bool, npLabels
 	remotePod := remotePodSelector(remote.Pod, target.PodSelector)
 
 	name := fmt.Sprintf("allow-ingress-to-%s", parsedLocal.Pod)
-	if parsedLocal.Protocol != "" && parsedLocal.Protocol != "TCP" {
+	if parsedLocal.Protocol != "" && parsedLocal.Protocol != protoTCP {
 		name += "-" + strings.ToLower(parsedLocal.Protocol)
 	}
 	if len(parsedLocal.Ports) > 0 {
@@ -382,10 +392,10 @@ func buildEgressCIDRNetpol(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPoli
 
 	localName := localKey
 	if localName == "*" {
-		localName = "any-pod"
+		localName = nameAnyPod
 	}
 	name := fmt.Sprintf("allow-egress-from-%s", localName)
-	if cidr.CIDR == "0.0.0.0/0" {
+	if cidr.CIDR == cidrAnywhere {
 		name += "-to-anywhere"
 	} else {
 		name += "-to-cidr-" + cidrNameSegment(cidr.CIDR)
@@ -429,13 +439,13 @@ func buildIngressCIDRNetpol(pkg *bbv1alpha1.Package, prepend bool, npLabels map[
 	}
 
 	name := fmt.Sprintf("allow-ingress-to-%s", parsedLocal.Pod)
-	if parsedLocal.Protocol != "" && parsedLocal.Protocol != "TCP" {
+	if parsedLocal.Protocol != "" && parsedLocal.Protocol != protoTCP {
 		name += "-" + strings.ToLower(parsedLocal.Protocol)
 	}
 	if len(parsedLocal.Ports) > 0 {
 		name += "-" + strings.ToLower(parsedLocal.Protocol) + "-" + namePortSuffix(parsedLocal.Ports, parsedLocal.HasPortRange)
 	}
-	if cidr.CIDR == "0.0.0.0/0" {
+	if cidr.CIDR == cidrAnywhere {
 		name += "-from-anywhere"
 	} else {
 		name += "-from-cidr-" + cidrNameSegment(cidr.CIDR)

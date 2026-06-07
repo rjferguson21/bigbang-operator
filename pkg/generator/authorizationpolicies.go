@@ -176,13 +176,13 @@ func generateAuthzFromIngressShorthand(pkg *bbv1alpha1.Package, npSpec *bbv1alph
 func buildAuthzFromCIDR(pkg *bbv1alpha1.Package, prepend bool, local *parsedLocalIngressKey, srcEntry shorthandSource, cidrKey string, cidr *parsedCIDR) *istiosecv1.AuthorizationPolicy {
 	// Reuse the NP naming scheme (kept in sync with buildIngressCIDRNetpol).
 	name := fmt.Sprintf("allow-ingress-to-%s", local.Pod)
-	if local.Protocol != "" && local.Protocol != "TCP" {
+	if local.Protocol != "" && local.Protocol != protoTCP {
 		name += "-" + lowercase(local.Protocol)
 	}
 	if len(local.Ports) > 0 {
 		name += "-" + lowercase(local.Protocol) + "-" + namePortSuffix(local.Ports, local.HasPortRange)
 	}
-	if cidr.CIDR == "0.0.0.0/0" {
+	if cidr.CIDR == cidrAnywhere {
 		name += "-from-anywhere"
 	} else {
 		name += "-from-cidr-" + cidrNameSegment(cidr.CIDR)
@@ -233,7 +233,7 @@ func buildAuthzFromShorthand(pkg *bbv1alpha1.Package, prepend bool, local *parse
 	// Mirror bb-common's naming: NP name with everything from "-from" on
 	// stripped, then "-from-ns-<ns>" or "-from-ns-<ns>-with-identity-<sa>".
 	netpolName := fmt.Sprintf("allow-ingress-to-%s", local.Pod)
-	if local.Protocol != "" && local.Protocol != "TCP" {
+	if local.Protocol != "" && local.Protocol != protoTCP {
 		netpolName += "-" + lowercase(local.Protocol)
 	}
 	if len(local.Ports) > 0 {

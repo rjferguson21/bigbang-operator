@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+// protoTCP is the default shorthand protocol; appears in many spots both as
+// the initialized field and as a "skip-when-default" check on naming.
+const protoTCP = "TCP"
+
 // parsedK8sRemote represents one parsed value from
 // `egress.from.<src>.to.k8s.<key>` or `ingress.to.<dst>.from.k8s.<key>`.
 //
@@ -57,7 +61,7 @@ func parseEgressRemoteKey(key string) (*parsedK8sRemote, error) {
 	if !egressRemoteKeyRe.MatchString(key) {
 		return nil, fmt.Errorf("egress k8s key %q does not match `[<tcp|udp>://]<ns>[/<pod>][:<ports>]`", key)
 	}
-	r := &parsedK8sRemote{Protocol: "TCP"}
+	r := &parsedK8sRemote{Protocol: protoTCP}
 	rest := key
 	if i := strings.Index(rest, "://"); i >= 0 {
 		r.Protocol = strings.ToUpper(rest[:i])
@@ -85,7 +89,7 @@ func parseIngressRemoteKey(key string) (*parsedK8sRemote, error) {
 	if !ingressRemoteKeyRe.MatchString(key) {
 		return nil, fmt.Errorf("ingress k8s key %q does not match `[<identity>@]<ns>[/<pod>]`", key)
 	}
-	r := &parsedK8sRemote{Protocol: "TCP"}
+	r := &parsedK8sRemote{Protocol: protoTCP}
 	rest := key
 	if i := strings.Index(rest, "@"); i >= 0 {
 		r.Identity = rest[:i]
@@ -104,7 +108,7 @@ func parseIngressLocalKey(key string) (*parsedLocalIngressKey, error) {
 	if !ingressLocalKeyRe.MatchString(key) {
 		return nil, fmt.Errorf("ingress local key %q does not match `[<udp|tcp>://]<pod-name>[:<ports>]`", key)
 	}
-	r := &parsedLocalIngressKey{Protocol: "TCP"}
+	r := &parsedLocalIngressKey{Protocol: protoTCP}
 	rest := key
 	if i := strings.Index(rest, "://"); i >= 0 {
 		r.Protocol = strings.ToUpper(rest[:i])
@@ -139,7 +143,7 @@ func parseEgressCIDRKey(key string) (*parsedCIDR, error) {
 	if !egressCIDRKeyRe.MatchString(key) {
 		return nil, fmt.Errorf("egress cidr key %q does not match `[<tcp|udp>://]<cidr>[:<ports>]`", key)
 	}
-	r := &parsedCIDR{Protocol: "TCP"}
+	r := &parsedCIDR{Protocol: protoTCP}
 	rest := key
 	if i := strings.Index(rest, "://"); i >= 0 {
 		r.Protocol = strings.ToUpper(rest[:i])
@@ -164,7 +168,7 @@ func parseIngressCIDRKey(key string) (*parsedCIDR, error) {
 	if !ingressCIDRKeyRe.MatchString(key) {
 		return nil, fmt.Errorf("ingress cidr key %q does not match `<cidr>`", key)
 	}
-	return &parsedCIDR{CIDR: key, Protocol: "TCP"}, nil
+	return &parsedCIDR{CIDR: key, Protocol: protoTCP}, nil
 }
 
 // cidrNameSegment mirrors bb-common: replace `.` and `/` with `-`.
