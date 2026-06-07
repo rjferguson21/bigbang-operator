@@ -172,6 +172,54 @@ group are roughly ordered by recommended sequence (highest first).
   chart + `helm install bigbang` directly with the same `disable-core`
   values — so the operator owns its dev-cluster recipe end-to-end.
 
+## bb-common parity gaps (audit 2026-06-07)
+
+Found in a side-by-side review of `bb-common/chart/templates`. Roughly
+ordered by impact — top items are user-facing or correctness-affecting,
+bottom items are niche.
+
+- [x] **Inbound route `selector` inference** — when omitted, defaults to
+  `{app.kubernetes.io/name: <route-name>}` before validation runs.
+- [x] **`allow-ambient-kubelet` default ingress** — emitted when
+  `istio.ambient.enabled: true`; allows ingress from `169.254.7.127/32`.
+  Also fixed: `allow-prometheus-to-istio-sidecar` is now suppressed
+  under ambient (matches bb-common's gating).
+- [x] **Outbound ServiceEntry naming `-external` / `-internal`** —
+  `buildOutboundServiceEntry` now suffixes by location.
+- [x] **Outbound SE default port protocol** — flipped `TLS` → `HTTPS`
+  to match bb-common.
+- [ ] **Helm-style templating in `routes.<…>.hosts[]`** — bb-common runs
+  each host through `tpl` so users can write
+  `podinfo.{{ .Values.global.domain }}`. The operator has no
+  `global.domain` and no template engine. **Deferred by decision
+  (2026-06-07)** — package CRs need literal hostnames for now; users
+  needing dynamic values can substitute via GitOps/kustomize before
+  apply. If revisited, the recommended shape is: operator-level config
+  (chart values → env vars → in-memory map) + plain `strings.ReplaceAll`
+  substitution on `routes.hosts[]` only, mimicking the bb-common syntax
+  (`{{ .Values.global.domain }}`) so values files copy-paste cleanly.
+  `configRef` (per-Package CM lookup) is a richer alternative if
+  multi-tenant per-namespace domains ever matter. See conversation
+  history for the full tradeoff analysis.
+- [x] **AP generation from CIDR shorthand** — `buildAuthzFromCIDR` emits
+  one AP per enabled CIDR ingress rule using `ipBlocks` source. Mirrors
+  the K8s shorthand's `with-identity` flow. Fixture `with-cidr-authz.yaml`.
+- [x] **Routes `passthrough` mode** — `routes.inbound.<name>.passthrough.enabled`
+  switches the VirtualService from `spec.http[]` to `spec.tls[]` with an
+  SNI match on `passthrough.gatewayPort` (default 8443). New
+  `RoutePassthrough` type in `api/v1alpha1`. Fixture `with-passthrough.yaml`.
+- [ ] **Route gateway pod-selector includes `istio: ingressgateway`** —
+  bb-common's inbound netpol uses
+  `{app.kubernetes.io/name: <gw>, istio: ingressgateway}`. Ours only uses
+  `app.kubernetes.io/name`. Functionally equivalent on real BB gateways
+  (both labels present), but a stricter selector is closer to the source.
+- [ ] **`metadata-overrides` on shorthand netpols** — bb-common merges
+  per-rule `metadata.{labels,annotations}` from both the local and remote
+  shorthand entries. Niche; raise only if a real package needs it.
+- [ ] **`from-spec-literal` egress rule** — raw NetworkPolicy egress
+  spec under `to.<key>.spec`. `additionalPolicies[]` covers the same need
+  with cleaner ergonomics; deferred.
+
 ## Out of v1 (no action planned)
 
 - Workload Helm release (`spec.source`, `spec.version`, `spec.values`).

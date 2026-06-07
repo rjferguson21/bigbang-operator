@@ -1,0 +1,20 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: harbor
+  namespace: harbor
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  istio:
+    enabled: true
+  routes:
+    inbound:
+      core:
+        enabled: true
+        gateways: [istio-gateway/passthrough-ingressgateway]
+        hosts: [harbor.dev.bigbang.mil]
+        service: harbor-core
+        port: 443
+        passthrough:
+          enabled: true
+        # No selector — let bb-common-style inference fill it.

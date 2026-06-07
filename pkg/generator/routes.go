@@ -42,6 +42,12 @@ func generateRoutes(pkg *bbv1alpha1.Package, spec *bbv1alpha1.Routes) ([]client.
 		if !route.Enabled {
 			continue
 		}
+		// Mirror bb-common's selector inference: when the user omits
+		// `selector`, default to `app.kubernetes.io/name=<route-name>`.
+		// Lets minimal route specs work without restating the obvious.
+		if len(route.Selector) == 0 {
+			route.Selector = map[string]string{"app.kubernetes.io/name": name}
+		}
 		if err := validateInbound(name, route); err != nil {
 			return nil, err
 		}
@@ -139,11 +145,7 @@ func sortedKeys[M ~map[string]V, V any](m M) []string {
 }
 
 func buildVirtualService(pkg *bbv1alpha1.Package, prepend bool, name string, r *bbv1alpha1.InboundRoute) (client.Object, error) {
-	httpRoutes, err := buildHTTPRoutes(r)
-	if err != nil {
-		return nil, fmt.Errorf("routes.inbound.%s.http: %w", name, err)
-	}
-	return &istionetv1.VirtualService{
+	vs := &istionetv1.VirtualService{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        prependName(prepend, pkg.Name, name),
 			Labels:      mergeMaps(r.Labels, nil),
@@ -152,9 +154,35 @@ func buildVirtualService(pkg *bbv1alpha1.Package, prepend bool, name string, r *
 		Spec: istionetv1alpha3.VirtualService{
 			Hosts:    r.Hosts,
 			Gateways: r.Gateways,
-			Http:     httpRoutes,
 		},
-	}, nil
+	}
+
+	// passthrough.enabled mutually excludes spec.http (matches bb-common).
+	if r.Passthrough != nil && r.Passthrough.Enabled {
+		gwPort := uint32(8443)
+		if r.Passthrough.GatewayPort != nil {
+			gwPort = uint32(*r.Passthrough.GatewayPort)
+		}
+		dest := &istionetv1alpha3.Destination{Host: r.Service}
+		if r.Port != nil {
+			dest.Port = &istionetv1alpha3.PortSelector{Number: portNumber(r.Port)}
+		}
+		vs.Spec.Tls = []*istionetv1alpha3.TLSRoute{{
+			Match: []*istionetv1alpha3.TLSMatchAttributes{{
+				Port:     gwPort,
+				SniHosts: r.Hosts,
+			}},
+			Route: []*istionetv1alpha3.RouteDestination{{Destination: dest}},
+		}}
+		return vs, nil
+	}
+
+	httpRoutes, err := buildHTTPRoutes(r)
+	if err != nil {
+		return nil, fmt.Errorf("routes.inbound.%s.http: %w", name, err)
+	}
+	vs.Spec.Http = httpRoutes
+	return vs, nil
 }
 
 // buildHTTPRoutes returns the spec.http slice. When the user supplies
@@ -247,7 +275,9 @@ func buildInboundNetpols(pkg *bbv1alpha1.Package, prepend bool, name string, r *
 func buildOutboundServiceEntry(pkg *bbv1alpha1.Package, prepend bool, name string, r *bbv1alpha1.OutboundRoute) client.Object {
 	ports := r.Ports
 	if len(ports) == 0 {
-		ports = []bbv1alpha1.OutboundRoutePort{{Number: 443, Name: "https", Protocol: "TLS"}}
+		// bb-common's default — note Protocol is HTTPS (the L7 name), not
+		// TLS. Istio accepts both but HTTPS is what bb-common ships.
+		ports = []bbv1alpha1.OutboundRoutePort{{Number: 443, Name: "https", Protocol: "HTTPS"}}
 	}
 	sePorts := make([]*istionetv1alpha3.ServicePort, 0, len(ports))
 	for _, p := range ports {
@@ -264,15 +294,22 @@ func buildOutboundServiceEntry(pkg *bbv1alpha1.Package, prepend bool, name strin
 		annotations = r.Metadata.Annotations
 	}
 
+	loc := parseLocation(r.Location)
+	// Match bb-common's suffix-by-location naming.
+	suffix := "-external"
+	if loc == istionetv1alpha3.ServiceEntry_MESH_INTERNAL {
+		suffix = "-internal"
+	}
+
 	return &istionetv1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        prependName(prepend, pkg.Name, name),
+			Name:        prependName(prepend, pkg.Name, name+suffix),
 			Labels:      mergeMaps(labels, nil),
 			Annotations: mergeMaps(annotations, nil),
 		},
 		Spec: istionetv1alpha3.ServiceEntry{
 			Hosts:      r.Hosts,
-			Location:   parseLocation(r.Location),
+			Location:   loc,
 			Resolution: parseResolution(r.Resolution),
 			Ports:      sePorts,
 		},

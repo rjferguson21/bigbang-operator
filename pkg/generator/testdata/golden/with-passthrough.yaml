@@ -1,0 +1,77 @@
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: harbor
+  name: default-peer-auth
+  namespace: harbor
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: harbor
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  mtls:
+    mode: STRICT
+status: {}
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: harbor
+  name: core
+  namespace: harbor
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: harbor
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  gateways:
+  - istio-gateway/passthrough-ingressgateway
+  hosts:
+  - harbor.dev.bigbang.mil
+  tls:
+  - match:
+    - port: 8443
+      sniHosts:
+      - harbor.dev.bigbang.mil
+    route:
+    - destination:
+        host: harbor-core
+        port:
+          number: 443
+status: {}
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: harbor
+  name: core-internal
+  namespace: harbor
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: harbor
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  hosts:
+  - harbor.dev.bigbang.mil
+  location: MESH_INTERNAL
+  ports:
+  - name: http
+    number: 443
+    protocol: HTTP
+  resolution: DNS
+status: {}

@@ -25,7 +25,7 @@ func generateNetworkPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPo
 	var out []client.Object
 
 	out = append(out, defaultEgressPolicies(pkg, spec, istio)...)
-	out = append(out, defaultIngressPolicies(pkg, spec)...)
+	out = append(out, defaultIngressPolicies(pkg, spec, istio)...)
 
 	if spec.Egress != nil {
 		objs, err := expandShorthandEgress(pkg, spec)
@@ -643,9 +643,10 @@ func defaultEgressPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPoli
 	return out
 }
 
-func defaultIngressPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies) []client.Object {
+func defaultIngressPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies, istio *bbv1alpha1.Istio) []client.Object {
 	prepend := spec.PrependReleaseName
 	npLabels := defaultNetpolLabels("ingress")
+	ambient := istioAmbient(istio)
 	var out []client.Object
 
 	if ingressDenyAll(spec) {
@@ -677,7 +678,9 @@ func defaultIngressPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPol
 			},
 		})
 	}
-	if ingressAllowPromToSidecar(spec) {
+	// allow-prometheus-to-istio-sidecar is sidecar-only — bb-common
+	// suppresses it under ambient mode (no per-pod sidecar = no port 15020).
+	if ingressAllowPromToSidecar(spec) && !ambient {
 		port15020 := intstr.FromInt(15020)
 		tcp := corev1.ProtocolTCP
 		out = append(out, &networkingv1.NetworkPolicy{
@@ -698,6 +701,25 @@ func defaultIngressPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPol
 						},
 					}},
 					Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port15020}},
+				}},
+			},
+		})
+	}
+	// allow-ambient-kubelet: under ambient mode, kubelet probes pods from
+	// the node's link-local 169.254.7.127. Matches bb-common.
+	if ambient && ingressSideEnabled(spec) {
+		out = append(out, &networkingv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   prependName(prepend, pkg.Name, "default-ingress-allow-ambient-kubelet"),
+				Labels: cloneLabels(npLabels),
+			},
+			Spec: networkingv1.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{},
+				PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+				Ingress: []networkingv1.NetworkPolicyIngressRule{{
+					From: []networkingv1.NetworkPolicyPeer{{
+						IPBlock: &networkingv1.IPBlock{CIDR: "169.254.7.127/32"},
+					}},
 				}},
 			},
 		})

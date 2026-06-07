@@ -50,6 +50,14 @@ type InboundRoute struct {
 	// +optional
 	Http []apiextensionsv1.JSON `json:"http,omitempty"`
 
+	// Passthrough enables TLS passthrough through the gateway: the
+	// VirtualService emits a `spec.tls` rule with an SNI match (the
+	// route's hosts) on the configured gateway port (default 8443),
+	// routing untouched TLS to the backing service. `http[]` is ignored
+	// when passthrough is on — matches bb-common's mutual-exclusion.
+	// +optional
+	Passthrough *RoutePassthrough `json:"passthrough,omitempty"`
+
 	// Resolution is the DNS resolution mode of the companion ServiceEntry.
 	// One of DNS, STATIC, DNS_ROUND_ROBIN, DYNAMIC_DNS, NONE. Default DNS.
 	// +optional
@@ -60,6 +68,18 @@ type InboundRoute struct {
 	Labels map[string]string `json:"labels,omitempty"`
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// RoutePassthrough configures TLS passthrough on an inbound route.
+type RoutePassthrough struct {
+	// Enabled toggles the passthrough rendering path.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// GatewayPort is the listener port the gateway exposes for passthrough
+	// traffic (typically 8443). Defaults to 8443 when omitted.
+	// +optional
+	GatewayPort *int `json:"gatewayPort,omitempty"`
 }
 
 // OutboundRoute is the typed view of one entry under `routes.outbound.<name>`.

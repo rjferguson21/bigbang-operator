@@ -153,8 +153,80 @@ func generateAuthzFromIngressShorthand(pkg *bbv1alpha1.Package, npSpec *bbv1alph
 			ap := buildAuthzFromShorthand(pkg, prepend, parsedLocal, local, remoteKey, remote)
 			out = append(out, ap)
 		}
+		for _, cidrKey := range sortedKeys(local.From.Cidr) {
+			if !local.From.Cidr[cidrKey].Enabled {
+				continue
+			}
+			cidr, err := parseIngressCIDRKey(cidrKey)
+			if err != nil {
+				return nil, fmt.Errorf("authz ingress.to.%s.from.cidr: %w", localKey, err)
+			}
+			ap := buildAuthzFromCIDR(pkg, prepend, parsedLocal, local, cidrKey, cidr)
+			out = append(out, ap)
+		}
 	}
 	return out, nil
+}
+
+// buildAuthzFromCIDR mirrors the K8s shorthand counterpart but emits an AP
+// whose source is `ipBlocks: [<cidr>]`. The name reuses the companion
+// NetworkPolicy's name (bb-common does this so the AP and NP are easy to
+// correlate in dashboards). When the local key has ports, they translate
+// into the AP's `to.operation.ports`.
+func buildAuthzFromCIDR(pkg *bbv1alpha1.Package, prepend bool, local *parsedLocalIngressKey, srcEntry shorthandSource, cidrKey string, cidr *parsedCIDR) *istiosecv1.AuthorizationPolicy {
+	// Reuse the NP naming scheme (kept in sync with buildIngressCIDRNetpol).
+	name := fmt.Sprintf("allow-ingress-to-%s", local.Pod)
+	if local.Protocol != "" && local.Protocol != "TCP" {
+		name += "-" + lowercase(local.Protocol)
+	}
+	if len(local.Ports) > 0 {
+		name += "-" + lowercase(local.Protocol) + "-" + namePortSuffix(local.Ports, local.HasPortRange)
+	}
+	if cidr.CIDR == "0.0.0.0/0" {
+		name += "-from-anywhere"
+	} else {
+		name += "-from-cidr-" + cidrNameSegment(cidr.CIDR)
+	}
+	name = prependName(prepend, pkg.Name, name)
+
+	selector := &istiotypev1beta1.WorkloadSelector{MatchLabels: map[string]string{"app.kubernetes.io/name": local.Pod}}
+	if len(srcEntry.PodSelector) > 0 {
+		selector = &istiotypev1beta1.WorkloadSelector{MatchLabels: srcEntry.PodSelector}
+	}
+
+	rule := &istiosecv1beta1.Rule{
+		From: []*istiosecv1beta1.Rule_From{{
+			Source: &istiosecv1beta1.Source{IpBlocks: []string{cidr.CIDR}},
+		}},
+	}
+	if len(local.Ports) > 0 {
+		op := &istiosecv1beta1.Operation{Ports: make([]string, 0, len(local.Ports))}
+		if local.HasPortRange && len(local.Ports) == 2 {
+			for p := local.Ports[0]; p <= local.Ports[1]; p++ {
+				op.Ports = append(op.Ports, strconv.Itoa(p))
+			}
+		} else {
+			for _, p := range local.Ports {
+				op.Ports = append(op.Ports, strconv.Itoa(p))
+			}
+		}
+		rule.To = []*istiosecv1beta1.Rule_To{{Operation: op}}
+	}
+
+	return &istiosecv1.AuthorizationPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Annotations: map[string]string{
+				"generated.authorization-policies.bigbang.dev/from-cidr": cidrKey,
+				"generated.authorization-policies.bigbang.dev/cidr":      cidr.CIDR,
+			},
+		},
+		Spec: istiosecv1beta1.AuthorizationPolicy{
+			Selector: selector,
+			Action:   istiosecv1beta1.AuthorizationPolicy_ALLOW,
+			Rules:    []*istiosecv1beta1.Rule{rule},
+		},
+	}
 }
 
 func buildAuthzFromShorthand(pkg *bbv1alpha1.Package, prepend bool, local *parsedLocalIngressKey, srcEntry shorthandSource, remoteKey string, remote *parsedK8sRemote) *istiosecv1.AuthorizationPolicy {

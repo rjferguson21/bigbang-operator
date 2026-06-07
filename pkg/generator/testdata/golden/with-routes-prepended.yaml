@@ -113,7 +113,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: bigbang-operator
     bigbang.dev/package: myapp
-  name: myapp-ext
+  name: myapp-ext-external
   namespace: myapp
   ownerReferences:
   - apiVersion: bigbang.dev/v1alpha1
