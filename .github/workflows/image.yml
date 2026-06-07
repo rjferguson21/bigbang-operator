@@ -65,7 +65,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          # amd64-only for now — BB clusters are x86_64. Adding arm64 via
+          # QEMU emulation pushes cold-build time past 25 min. Revisit with
+          # a native ubuntu-24.04-arm matrix runner if arm64 is needed.
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
