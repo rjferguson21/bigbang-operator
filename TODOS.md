@@ -153,13 +153,12 @@ group are roughly ordered by recommended sequence (highest first).
 
 - [x] Big Bang Helm chart in `chart/` with deployment, RBAC, CRD sync
 - [x] Local dev `make` targets + Kyverno PolicyException for k3d
-- [ ] **Basic CI** — GitHub Actions on the
-  `rjferguson21/bigbang-operator` remote. Minimum useful set:
-  `make fmt vet`, `make test` (provisions envtest binaries, runs both
-  generator goldens + controller envtest), `make build`. Skip e2e for
-  now — `make bb-smoke` / `make podinfo-smoke` need a real BB cluster
-  and helm/k3d aren't free in CI. Trigger on push to main + PRs.
-  Cache the Go build cache and `bin/k8s/*` to keep runs fast.
+- [x] **Basic CI** — `.github/workflows/{test,lint,test-e2e}.yml` running
+  on push to main + all PRs. `test.yml` caches `bin/` (envtest control
+  plane), runs `make test`, checks generated artifacts for drift, and
+  builds the manager binary. Lint runs golangci-lint v2.5.0 with `pkg/*`
+  excluded from `lll`/`prealloc` (long generator signatures are inherent).
+  All three workflows green on main; first run ~5 min, cached run ~1 min.
 - [ ] **Iron Bank image** — replace the local `:dev` flow with an
   immutable tag from `registry1.dso.mil`. Removes the need for the
   PolicyException in production.
