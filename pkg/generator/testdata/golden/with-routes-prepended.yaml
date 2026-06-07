@@ -1,0 +1,163 @@
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: myapp
+  name: default-peer-auth
+  namespace: myapp
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: myapp
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  mtls:
+    mode: STRICT
+status: {}
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: myapp
+  name: myapp-api
+  namespace: myapp
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: myapp
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  gateways:
+  - istio-gateway/public-ingressgateway
+  hosts:
+  - myapp.bigbang.mil
+  http:
+  - route:
+    - destination:
+        host: myapp
+        port:
+          number: 8080
+status: {}
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: myapp
+  name: myapp-api-internal
+  namespace: myapp
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: myapp
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  hosts:
+  - myapp.bigbang.mil
+  location: MESH_INTERNAL
+  ports:
+  - name: http
+    number: 8080
+    protocol: HTTP
+  resolution: DNS
+status: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: myapp
+    network-policies.bigbang.dev/direction: ingress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: myapp-allow-ingress-to-myapp-8080-from-ns-istio-gateway-pod-public-ingressgateway
+  namespace: myapp
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: myapp
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-gateway
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: public-ingressgateway
+    ports:
+    - port: 8080
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: myapp
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: myapp
+  name: myapp-ext
+  namespace: myapp
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: myapp
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  hosts:
+  - api.example.com
+  ports:
+  - name: https
+    number: 443
+    protocol: TLS
+  resolution: DNS
+status: {}
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: myapp
+  name: myapp-myapp-public-ingressgateway-authz-policy
+  namespace: myapp
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: myapp
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  rules:
+  - from:
+    - source:
+        principals:
+        - cluster.local/ns/istio-gateway/sa/public-ingressgateway-ingressgateway-service-account
+    to:
+    - operation:
+        ports:
+        - "8080"
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: myapp
+status: {}

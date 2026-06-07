@@ -8,6 +8,7 @@ import (
 	istiosecv1beta1 "istio.io/api/security/v1beta1"
 	istiotypev1beta1 "istio.io/api/type/v1beta1"
 	istiosecv1 "istio.io/client-go/pkg/apis/security/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -250,14 +251,14 @@ func generateAuthzFromRoutes(pkg *bbv1alpha1.Package, routes *bbv1alpha1.Routes,
 			if !ok {
 				continue
 			}
-			out = append(out, buildAuthzFromRoute(route, gwNS, gwName))
+			out = append(out, buildAuthzFromRoute(pkg, routes.PrependReleaseName, route, gwNS, gwName))
 		}
 	}
 	return out, nil
 }
 
-func buildAuthzFromRoute(route *bbv1alpha1.InboundRoute, gwNS, gwName string) *istiosecv1.AuthorizationPolicy {
-	apName := fmt.Sprintf("%s-%s-authz-policy", serviceLeaf(route.Service), gwName)
+func buildAuthzFromRoute(pkg *bbv1alpha1.Package, prepend bool, route *bbv1alpha1.InboundRoute, gwNS, gwName string) *istiosecv1.AuthorizationPolicy {
+	apName := prependName(prepend, pkg.Name, fmt.Sprintf("%s-%s-authz-policy", serviceLeaf(route.Service), gwName))
 
 	rule := &istiosecv1beta1.Rule{
 		From: []*istiosecv1beta1.Rule_From{{
@@ -290,6 +291,101 @@ func buildAuthzFromRoute(route *bbv1alpha1.InboundRoute, gwNS, gwName string) *i
 			Rules:    []*istiosecv1beta1.Rule{rule},
 		},
 	}
+}
+
+// generateCustomAuthzPolicies emits one AuthorizationPolicy per entry in
+// `istio.authorizationPolicies.custom[]` (list form) and per ENABLED entry
+// in `istio.authorizationPolicies.additionalPolicies` (map form, gated by
+// the per-entry `enabled` field). Both forms accept raw JSON specs because
+// the AP API is large and the schema only loosely types `spec`.
+//
+// Unlike the generated APs, these are not gated on
+// `authorizationPolicies.enabled`: users opting in by declaring a custom AP
+// have already expressed intent. They are gated on `istio.enabled` by the
+// caller (Generate only invokes generateIstio when istio is on, but this
+// runs in the AP pass — so we also short-circuit when istio is nil/off).
+func generateCustomAuthzPolicies(istio *bbv1alpha1.Istio) ([]client.Object, error) {
+	if istio == nil || !istio.Enabled || istio.AuthorizationPolicies == nil {
+		return nil, nil
+	}
+	apSpec := istio.AuthorizationPolicies
+
+	var out []client.Object
+	for i, elem := range apSpec.Custom {
+		if elem.Name == "" {
+			return nil, fmt.Errorf("custom[%d]: name is required", i)
+		}
+		ap, err := buildRawAuthzPolicy(elem.Name, map[string]string(elem.Labels), map[string]string(elem.Annotations), elem.Spec)
+		if err != nil {
+			return nil, fmt.Errorf("custom[%d] %q: %w", i, elem.Name, err)
+		}
+		out = append(out, ap)
+	}
+	for _, key := range sortedKeys(apSpec.AdditionalPolicies) {
+		elem := apSpec.AdditionalPolicies[key]
+		if !elem.Enabled {
+			continue
+		}
+		name := key
+		if elem.Name != nil && *elem.Name != "" {
+			name = *elem.Name
+		}
+		// elem.Namespace is intentionally ignored — owner refs across
+		// namespaces aren't supported, so all emitted resources live in the
+		// Package's namespace (stamped in Generate).
+		ap, err := buildAdditionalAuthzPolicy(name, map[string]string(elem.Labels), map[string]string(elem.Annotations), elem.Spec)
+		if err != nil {
+			return nil, fmt.Errorf("additionalPolicies.%s: %w", key, err)
+		}
+		out = append(out, ap)
+	}
+	return out, nil
+}
+
+// buildRawAuthzPolicy materializes one AP from a raw spec map. The map's
+// shape is opaque to the operator — round-trip through JSON populates the
+// typed proto so SSA marshals it correctly.
+func buildRawAuthzPolicy(name string, labels, annotations map[string]string, rawSpec map[string]apiextensionsv1.JSON) (*istiosecv1.AuthorizationPolicy, error) {
+	ap := &istiosecv1.AuthorizationPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Labels:      labels,
+			Annotations: annotations,
+		},
+	}
+	if len(rawSpec) == 0 {
+		return ap, nil
+	}
+	b, err := json.Marshal(rawSpec)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(b, &ap.Spec); err != nil {
+		return nil, err
+	}
+	return ap, nil
+}
+
+// buildAdditionalAuthzPolicy is the same as buildRawAuthzPolicy but takes
+// the AdditionalPolicies typed spec (action + rules + selector). The
+// schema models these fields more tightly than the loose `custom[]`
+// passthrough, but the spec round-trip is the same shape.
+func buildAdditionalAuthzPolicy(name string, labels, annotations map[string]string, spec bbv1alpha1.IstioAuthorizationPoliciesAdditionalPoliciesValueSpec) (*istiosecv1.AuthorizationPolicy, error) {
+	ap := &istiosecv1.AuthorizationPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Labels:      labels,
+			Annotations: annotations,
+		},
+	}
+	b, err := json.Marshal(spec)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(b, &ap.Spec); err != nil {
+		return nil, err
+	}
+	return ap, nil
 }
 
 func lowercase(s string) string {

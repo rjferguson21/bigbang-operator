@@ -1,0 +1,115 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    generated.network-policies.bigbang.dev/local-key: example-app
+    generated.network-policies.bigbang.dev/remote-key: other-ns/other-app:8080
+  labels:
+    ambient.istio.network-policies.bigbang.dev/hbone-injected: "true"
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: egress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: allow-egress-from-example-app-to-ns-other-ns-pod-other-app-tcp-port-8080
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  egress:
+  - ports:
+    - port: 8080
+      protocol: TCP
+    - port: 15008
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: other-ns
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: other-app
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+  policyTypes:
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    generated.network-policies.bigbang.dev/local-key: example-app
+    generated.network-policies.bigbang.dev/remote-key: 10.0.0.0/8:443
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: egress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: allow-egress-from-example-app-to-cidr-10-0-0-0-8-tcp-port-443
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  egress:
+  - ports:
+    - port: 443
+      protocol: TCP
+    to:
+    - ipBlock:
+        cidr: 10.0.0.0/8
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+  policyTypes:
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    generated.network-policies.bigbang.dev/local-key: example-app
+    generated.network-policies.bigbang.dev/remote-key: monitoring/prometheus
+  labels:
+    ambient.istio.network-policies.bigbang.dev/hbone-injected: "true"
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: ingress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: allow-ingress-to-example-app-tcp-port-8080-from-ns-monitoring-pod-prometheus
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: prometheus
+    ports:
+    - port: 8080
+      protocol: TCP
+    - port: 15008
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+  policyTypes:
+  - Ingress

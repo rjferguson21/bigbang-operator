@@ -1,0 +1,32 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: example-app
+  namespace: example-app
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  networkPolicies:
+    enabled: true
+    # Explicit injection on; covers the non-ambient case. The ambient case
+    # is the same code path (auto-on when istio.ambient.enabled: true).
+    hbonePortInjection:
+      enabled: true
+    egress:
+      defaults: { enabled: false }
+      from:
+        example-app:
+          to:
+            k8s:
+              # k8s peer with explicit port -> eligible, gets 15008 injected
+              other-ns/other-app:8080: true
+            cidr:
+              # pure ipBlock peer -> NOT eligible, no injection
+              10.0.0.0/8:443: true
+    ingress:
+      defaults: { enabled: false }
+      to:
+        example-app:8080:
+          from:
+            k8s:
+              # k8s peer with port -> eligible
+              monitoring/prometheus: true

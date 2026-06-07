@@ -47,6 +47,10 @@ var (
 		`^([A-Za-z0-9-]+@)?([A-Za-z0-9-]+|\*)(/([A-Za-z0-9-]+|\*))?$`)
 	ingressLocalKeyRe = regexp.MustCompile(
 		`^((tcp|udp)://)?[\w-]+(:(\[?\d+(,\d+)*\]?|\d+|\d+-\d+))?$`)
+	egressCIDRKeyRe = regexp.MustCompile(
+		`^((tcp|udp)://)?(\d+\.){3}\d+/\d+(:(\d+|\d+-\d+|\[?\d+(,\d+)*\]?))?$`)
+	ingressCIDRKeyRe = regexp.MustCompile(
+		`^(\d+\.){3}\d+/\d+$`)
 )
 
 func parseEgressRemoteKey(key string) (*parsedK8sRemote, error) {
@@ -117,6 +121,57 @@ func parseIngressLocalKey(key string) (*parsedLocalIngressKey, error) {
 	}
 	r.Pod = rest
 	return r, nil
+}
+
+// parsedCIDR represents one parsed value from
+// `egress.from.<src>.to.cidr.<key>` or `ingress.to.<dst>.from.cidr.<key>`.
+//
+// Egress key format: `[<tcp|udp>://]<cidr>[:<ports>]`.
+// Ingress key format: `<cidr>` (ports live on the local ingress key).
+type parsedCIDR struct {
+	CIDR         string
+	Protocol     string
+	Ports        []int
+	HasPortRange bool
+}
+
+func parseEgressCIDRKey(key string) (*parsedCIDR, error) {
+	if !egressCIDRKeyRe.MatchString(key) {
+		return nil, fmt.Errorf("egress cidr key %q does not match `[<tcp|udp>://]<cidr>[:<ports>]`", key)
+	}
+	r := &parsedCIDR{Protocol: "TCP"}
+	rest := key
+	if i := strings.Index(rest, "://"); i >= 0 {
+		r.Protocol = strings.ToUpper(rest[:i])
+		rest = rest[i+3:]
+	}
+	// CIDR contains a "/"; ports separator is ":" *after* the CIDR.
+	// Find the last ":" — safe because CIDR has no ":" in IPv4.
+	if i := strings.LastIndex(rest, ":"); i > strings.LastIndex(rest, "/") {
+		ports, hasRange, err := parsePortSpec(rest[i+1:])
+		if err != nil {
+			return nil, err
+		}
+		r.Ports = ports
+		r.HasPortRange = hasRange
+		rest = rest[:i]
+	}
+	r.CIDR = rest
+	return r, nil
+}
+
+func parseIngressCIDRKey(key string) (*parsedCIDR, error) {
+	if !ingressCIDRKeyRe.MatchString(key) {
+		return nil, fmt.Errorf("ingress cidr key %q does not match `<cidr>`", key)
+	}
+	return &parsedCIDR{CIDR: key, Protocol: "TCP"}, nil
+}
+
+// cidrNameSegment mirrors bb-common: replace `.` and `/` with `-`.
+// `0.0.0.0/0` collapses to "anywhere" at the caller.
+func cidrNameSegment(cidr string) string {
+	out := strings.ReplaceAll(cidr, ".", "-")
+	return strings.ReplaceAll(out, "/", "-")
 }
 
 // parsePortSpec accepts `<n>`, `<a>-<b>`, or `<a>,<b>,...` (optionally

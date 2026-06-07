@@ -7,6 +7,11 @@ import "k8s.io/apimachinery/pkg/util/intstr"
 // because the schema uses patternProperties) into this struct at render
 // time. Fields mirror plan/routes.md and bb-common's
 // templates/routes/inbound.
+//
+// NOTE: kubebuilder:validation markers on this struct don't surface in the
+// CRD — the `routes.inbound` field uses x-kubernetes-preserve-unknown-fields,
+// so the apiserver sees an opaque map. Validation happens at reconcile time
+// when the operator decodes into this type.
 type InboundRoute struct {
 	// Enabled lets a route be retained in spec but skipped from rendering.
 	// +optional

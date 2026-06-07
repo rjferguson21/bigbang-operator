@@ -98,6 +98,10 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
 
+.PHONY: bb-smoke
+bb-smoke: ## Run the Big Bang reconciler smoke test against the current cluster (requires `make dev-deploy`).
+	./test/e2e/bb_smoke.sh
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	"$(GOLANGCI_LINT)" run

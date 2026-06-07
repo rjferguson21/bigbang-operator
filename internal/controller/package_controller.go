@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	istionetv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istiosecv1 "istio.io/client-go/pkg/apis/security/v1"
@@ -53,6 +54,9 @@ func (r *PackageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	var pkg bbv1alpha1.Package
 	if err := r.Get(ctx, req.NamespacedName, &pkg); err != nil {
 		if apierrors.IsNotFound(err) {
+			// Object is gone; controller-runtime will fire one more reconcile
+			// for the delete event but the metric labels would be stale, so
+			// don't emit anything here.
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -62,18 +66,29 @@ func (r *PackageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 	}
 
+	start := time.Now()
+	defer func() {
+		reconcileDurationSeconds.WithLabelValues(pkg.Namespace, pkg.Name).Observe(time.Since(start).Seconds())
+	}()
+
 	desired, err := generator.Generate(generator.Input{Package: &pkg, Scheme: r.Scheme})
 	if err != nil {
+		reconcileTotal.WithLabelValues(pkg.Namespace, pkg.Name, outcomeGenerationFailed).Inc()
 		return r.markFailed(ctx, &pkg, "GenerationFailed", err)
 	}
 
 	if err := r.applyAll(ctx, desired); err != nil {
+		reconcileTotal.WithLabelValues(pkg.Namespace, pkg.Name, outcomeApplyFailed).Inc()
 		return r.markFailed(ctx, &pkg, "ApplyFailed", err)
 	}
 
 	if err := r.pruneStale(ctx, &pkg, desired); err != nil {
+		reconcileTotal.WithLabelValues(pkg.Namespace, pkg.Name, outcomePruneFailed).Inc()
 		return r.markFailed(ctx, &pkg, "PruneFailed", err)
 	}
+
+	reconcileTotal.WithLabelValues(pkg.Namespace, pkg.Name, outcomeSuccess).Inc()
+	appliedResources.WithLabelValues(pkg.Namespace, pkg.Name).Set(float64(len(desired)))
 
 	logger.Info("reconciled", "applied", len(desired))
 	return r.markReady(ctx, &pkg, desired)

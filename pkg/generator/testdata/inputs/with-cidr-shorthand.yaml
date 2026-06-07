@@ -1,0 +1,30 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: example-app
+  namespace: example-app
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  networkPolicies:
+    enabled: true
+    egress:
+      defaults:
+        enabled: false
+      from:
+        example-app:
+          to:
+            cidr:
+              10.0.0.0/8: true                    # bare CIDR, no ports
+              tcp://192.168.1.0/24:443: true      # explicit proto + port
+              udp://10.10.0.0/16:53: true         # UDP DNS
+              0.0.0.0/0:80,443: true              # "anywhere" naming
+              172.16.0.0/12: false                # disabled, won't emit
+    ingress:
+      defaults:
+        enabled: false
+      to:
+        example-app:8080:
+          from:
+            cidr:
+              10.0.0.0/8: true
+              0.0.0.0/0: true

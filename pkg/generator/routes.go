@@ -31,6 +31,7 @@ func generateRoutes(pkg *bbv1alpha1.Package, spec *bbv1alpha1.Routes) ([]client.
 	netpolsEnabled := pkg.Spec.NetworkPolicies != nil && pkg.Spec.NetworkPolicies.Enabled
 
 	var out []client.Object
+	prepend := spec.PrependReleaseName
 
 	for _, name := range sortedKeys(spec.Inbound) {
 		raw := spec.Inbound[name]
@@ -41,10 +42,13 @@ func generateRoutes(pkg *bbv1alpha1.Package, spec *bbv1alpha1.Routes) ([]client.
 		if !route.Enabled {
 			continue
 		}
-		out = append(out, buildVirtualService(pkg, name, route))
-		out = append(out, buildInboundServiceEntry(pkg, name, route))
+		if err := validateInbound(name, route); err != nil {
+			return nil, err
+		}
+		out = append(out, buildVirtualService(pkg, prepend, name, route))
+		out = append(out, buildInboundServiceEntry(pkg, prepend, name, route))
 		if netpolsEnabled {
-			out = append(out, buildInboundNetpols(pkg, name, route)...)
+			out = append(out, buildInboundNetpols(pkg, prepend, name, route)...)
 		}
 	}
 
@@ -57,10 +61,42 @@ func generateRoutes(pkg *bbv1alpha1.Package, spec *bbv1alpha1.Routes) ([]client.
 		if !route.Enabled {
 			continue
 		}
-		out = append(out, buildOutboundServiceEntry(pkg, name, route))
+		if err := validateOutbound(name, route); err != nil {
+			return nil, err
+		}
+		out = append(out, buildOutboundServiceEntry(pkg, prepend, name, route))
 	}
 
 	return out, nil
+}
+
+// validateInbound checks fields the CRD schema can't validate
+// (routes.inbound is x-kubernetes-preserve-unknown-fields, so apiserver
+// validation is bypassed). Errors here surface as the Package's Ready=False
+// reason "GenerationFailed".
+func validateInbound(name string, r *bbv1alpha1.InboundRoute) error {
+	if len(r.Gateways) == 0 {
+		return fmt.Errorf("routes.inbound.%s: gateways[] must be non-empty when enabled", name)
+	}
+	for _, gw := range r.Gateways {
+		if _, _, ok := splitGateway(gw); !ok {
+			return fmt.Errorf("routes.inbound.%s: gateway %q must be <namespace>/<name>", name, gw)
+		}
+	}
+	if r.Service == "" {
+		return fmt.Errorf("routes.inbound.%s: service is required when enabled", name)
+	}
+	if r.Port == nil {
+		return fmt.Errorf("routes.inbound.%s: port is required when enabled", name)
+	}
+	return nil
+}
+
+func validateOutbound(name string, r *bbv1alpha1.OutboundRoute) error {
+	if len(r.Hosts) == 0 {
+		return fmt.Errorf("routes.outbound.%s: hosts[] must be non-empty when enabled", name)
+	}
+	return nil
 }
 
 func decodeInbound(j any) (*bbv1alpha1.InboundRoute, error) {
@@ -98,7 +134,7 @@ func sortedKeys[M ~map[string]V, V any](m M) []string {
 	return out
 }
 
-func buildVirtualService(pkg *bbv1alpha1.Package, name string, r *bbv1alpha1.InboundRoute) client.Object {
+func buildVirtualService(pkg *bbv1alpha1.Package, prepend bool, name string, r *bbv1alpha1.InboundRoute) client.Object {
 	dest := &istionetv1alpha3.Destination{
 		Host: r.Service,
 	}
@@ -110,7 +146,7 @@ func buildVirtualService(pkg *bbv1alpha1.Package, name string, r *bbv1alpha1.Inb
 
 	return &istionetv1.VirtualService{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
+			Name:        prependName(prepend, pkg.Name, name),
 			Labels:      mergeMaps(r.Labels, nil),
 			Annotations: mergeMaps(r.Annotations, nil),
 		},
@@ -124,14 +160,14 @@ func buildVirtualService(pkg *bbv1alpha1.Package, name string, r *bbv1alpha1.Inb
 	}
 }
 
-func buildInboundServiceEntry(pkg *bbv1alpha1.Package, name string, r *bbv1alpha1.InboundRoute) client.Object {
+func buildInboundServiceEntry(pkg *bbv1alpha1.Package, prepend bool, name string, r *bbv1alpha1.InboundRoute) client.Object {
 	port := portNumber(r.Port)
 	if r.ContainerPort != nil {
 		port = portNumber(r.ContainerPort)
 	}
 	return &istionetv1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        name + "-internal",
+			Name:        prependName(prepend, pkg.Name, name+"-internal"),
 			Labels:      mergeMaps(r.Labels, nil),
 			Annotations: mergeMaps(r.Annotations, nil),
 		},
@@ -148,7 +184,7 @@ func buildInboundServiceEntry(pkg *bbv1alpha1.Package, name string, r *bbv1alpha
 	}
 }
 
-func buildInboundNetpols(pkg *bbv1alpha1.Package, name string, r *bbv1alpha1.InboundRoute) []client.Object {
+func buildInboundNetpols(pkg *bbv1alpha1.Package, prepend bool, name string, r *bbv1alpha1.InboundRoute) []client.Object {
 	out := make([]client.Object, 0, len(r.Gateways))
 	for _, gw := range r.Gateways {
 		gwNS, gwName, ok := splitGateway(gw)
@@ -159,8 +195,8 @@ func buildInboundNetpols(pkg *bbv1alpha1.Package, name string, r *bbv1alpha1.Inb
 		tcp := corev1.ProtocolTCP
 		out = append(out, &networkingv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("allow-ingress-to-%s-%d-from-ns-%s-pod-%s",
-					serviceLeaf(r.Service), portNumber(r.Port), gwNS, gwName),
+				Name: prependName(prepend, pkg.Name, fmt.Sprintf("allow-ingress-to-%s-%d-from-ns-%s-pod-%s",
+					serviceLeaf(r.Service), portNumber(r.Port), gwNS, gwName)),
 				Labels:      mergeMaps(r.Labels, map[string]string{LabelNetpolSource: LabelNetpolSourceValue, "network-policies.bigbang.dev/direction": "ingress"}),
 				Annotations: mergeMaps(r.Annotations, nil),
 			},
@@ -184,7 +220,7 @@ func buildInboundNetpols(pkg *bbv1alpha1.Package, name string, r *bbv1alpha1.Inb
 	return out
 }
 
-func buildOutboundServiceEntry(pkg *bbv1alpha1.Package, name string, r *bbv1alpha1.OutboundRoute) client.Object {
+func buildOutboundServiceEntry(pkg *bbv1alpha1.Package, prepend bool, name string, r *bbv1alpha1.OutboundRoute) client.Object {
 	ports := r.Ports
 	if len(ports) == 0 {
 		ports = []bbv1alpha1.OutboundRoutePort{{Number: 443, Name: "https", Protocol: "TLS"}}
@@ -206,7 +242,7 @@ func buildOutboundServiceEntry(pkg *bbv1alpha1.Package, name string, r *bbv1alph
 
 	return &istionetv1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
+			Name:        prependName(prepend, pkg.Name, name),
 			Labels:      mergeMaps(labels, nil),
 			Annotations: mergeMaps(annotations, nil),
 		},

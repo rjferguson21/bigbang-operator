@@ -15,12 +15,26 @@ group are roughly ordered by recommended sequence (highest first).
 - [ ] **Finalizer** — only needed if/when reconcile starts doing work the
   apiserver can't GC (external system calls, ordered teardown). Skip until
   there's a concrete reason.
-- [ ] **CEL validations on the CRD** — e.g. require `gateways[]` non-empty
-  when an inbound route is `enabled: true`. Lives in kubebuilder markers on
-  `api/v1alpha1/routes_shorthand.go`.
-- [ ] **Reconcile metrics** — counters for success/failure, histograms for
-  reconcile latency. Kubebuilder ships `/metrics`; just register custom
-  counters in `package_controller.go`.
+- [x] **Field validation for routes** — the original TODO assumed CEL on
+  the `InboundRoute` struct would surface, but `routes.inbound` /
+  `routes.outbound` are `x-kubernetes-preserve-unknown-fields` (because
+  they're keyed maps with `patternProperties` in the bb-common schema),
+  so kubebuilder validation markers there are dead. Instead, added
+  reconciler-time validation in `pkg/generator/routes.go::validateInbound`
+  / `validateOutbound` — required fields (`gateways[]` non-empty, valid
+  `<ns>/<name>` form, `service`, `port`; outbound `hosts[]`) produce clear
+  errors that surface as Ready=False / Reason=GenerationFailed on the
+  Package. CEL on the typed top-level spec wasn't worth adding — the
+  existing enum constraints already cover the typed surface.
+- [x] **Reconcile metrics** — three series registered on the existing
+  controller-runtime `/metrics` endpoint:
+  `bigbang_operator_reconcile_total{namespace,name,outcome}` (counter;
+  outcomes: success / generation_failed / apply_failed / prune_failed),
+  `bigbang_operator_reconcile_duration_seconds{namespace,name}`
+  (histogram, 10 ms…40 s exponential buckets), and
+  `bigbang_operator_applied_resources{namespace,name}` (gauge of last
+  successful reconcile's emitted count). Lives in
+  `internal/controller/metrics.go`.
 
 ## Istio
 
@@ -39,10 +53,16 @@ group are roughly ordered by recommended sequence (highest first).
   `pkg/generator/istio.go::sidecarResource`, fixture
   `testdata/{inputs,golden}/with-sidecar.yaml`, Sidecar CRD vendored
   under `internal/controller/testdata/crds/`.
-- [ ] **Custom ServiceEntries / AuthorizationPolicies passthrough** —
-  `istio.serviceEntries.custom[]`,
-  `istio.authorizationPolicies.custom[]`,
-  `istio.authorizationPolicies.additionalPolicies` (map form).
+- [x] **Custom ServiceEntries / AuthorizationPolicies passthrough** —
+  `istio.serviceEntries.custom[]` (list), `istio.authorizationPolicies.custom[]`
+  (list), and `istio.authorizationPolicies.additionalPolicies` (map, gated
+  by per-entry `enabled`). Raw `spec` is round-tripped via JSON into the
+  typed proto. `Name` override on additionalPolicies entries is honored;
+  `Namespace` is ignored (owner refs can't cross namespaces). Lives in
+  `pkg/generator/istio.go::generateCustomServiceEntries` and
+  `authorizationpolicies.go::generateCustomAuthzPolicies`. Fixture
+  `testdata/{inputs,golden}/with-custom-istio.yaml`. Prune comes for free
+  via the existing managed-list wiring.
 
 ## NetworkPolicies
 
@@ -56,15 +76,29 @@ group are roughly ordered by recommended sequence (highest first).
   populate — override the definition to pin ports), ingress
   `gateway`/`monitoring`. Lives in `pkg/generator/definitions.go`,
   fixture `testdata/{inputs,golden}/with-definitions.yaml`.
-- [ ] **Shorthand `cidr` subkey** — `to.cidr.<key>` /
-  `from.cidr.<key>`, parallel to `to.k8s.<key>`.
+- [x] **Shorthand `cidr` subkey** — `to.cidr.<key>` /
+  `from.cidr.<key>`, parallel to `to.k8s.<key>`. Egress key:
+  `[<tcp|udp>://]<cidr>[:<ports>]`; ingress key: `<cidr>` (ports come
+  from local key). `0.0.0.0/0` renders as `…-anywhere`. Parsers in
+  `pkg/generator/shorthand.go`, builders in `networkpolicies.go`,
+  fixture `testdata/{inputs,golden}/with-cidr-shorthand.yaml`.
 - [ ] **`defaultsAsHooks`** — emit `-as-hook` copies of each default for
   Helm hook phases (`pre-install`, `pre-upgrade`, `post-delete`).
   Only matters if a Helm-style install model returns.
-- [ ] **`hbonePortInjection`** — inject port 15008 into rules under ambient
-  mode (auto-on when `istio.ambient.enabled: true`).
-- [ ] **`excludeCIDRs`** — strip configured CIDRs from all ipBlock egress
-  rules (default `169.254.169.254/32`).
+- [x] **`hbonePortInjection`** — post-pass that appends TCP/15008 to every
+  egress/ingress rule that has explicit ports AND at least one
+  namespaceSelector/podSelector peer. Auto-on when `istio.ambient.enabled:
+  true`; explicit `networkPolicies.hbonePortInjection.enabled` flag is the
+  non-ambient override. Mutated policies are labeled
+  `ambient.istio.network-policies.bigbang.dev/hbone-injected=true`. Lives
+  in `pkg/generator/hbone.go`, fixture
+  `testdata/{inputs,golden}/with-hbone-injection.yaml`.
+- [x] **`excludeCIDRs`** — applied to egress `cidr` shorthand rules.
+  Default `["169.254.169.254/32"]`; each exclusion goes into
+  `ipBlock.except` only when strictly contained in the rule's CIDR.
+  Implemented as `applyExcludeCIDRs` in `pkg/generator/networkpolicies.go`
+  using `net.ParseCIDR` (much simpler than bb-common's Helm version).
+  Fixture `testdata/{inputs,golden}/with-exclude-cidrs.yaml`.
 - [ ] **De-duplication** — bb-common dedupes identical specs and suffixes
   collisions with `-deduped-N`. Operator currently skips dedup; add only
   if real packages hit duplicates.
@@ -75,18 +109,24 @@ group are roughly ordered by recommended sequence (highest first).
 - [x] Outbound: ServiceEntry
 - [ ] **Advanced HTTP rules** — `http[]` array on inbound routes (match,
   rewrite, retries, fault injection) merged into the VirtualService.
-- [ ] **`prependReleaseName`** — name rewriting for route-emitted resources.
-  `istio` and `networkPolicies` have their own independent flag; route
-  generation should honor `routes.prependReleaseName` too.
+- [x] **`prependReleaseName`** — `routes.prependReleaseName: true` now
+  prepends `<package-name>-` to VirtualService, inbound ServiceEntry,
+  gateway-permitting NetworkPolicy, outbound ServiceEntry, and per-route
+  AuthorizationPolicy names. Independent of the `istio` /
+  `networkPolicies` flags. Fixture
+  `testdata/{inputs,golden}/with-routes-prepended.yaml`.
 - [x] **Per-route AuthorizationPolicy** — also listed under *Istio* above.
 
 ## Tests
 
 - [x] Generator golden tests (6 fixtures)
 - [x] **envtest reconciler suite** — also listed under *Reconciler*.
-- [ ] **Kind/k3d e2e** — driven by `make dev-deploy` + a Bash test
-  harness; assert reconciler emits expected resources and prunes on spec
-  change. Could live under `test/e2e/`.
+- [x] **Kind/k3d e2e** — `test/e2e/bb_smoke.sh` drives 5 scenarios
+  (defaults, prune on shrink, routes + per-route AP, CIDR + default
+  excludeCIDRs, Sidecar emit/prune) against whatever cluster the operator
+  is deployed to. `make bb-smoke` wraps it. Each test uses an isolated
+  namespace and waits on the Package's Ready condition before asserting.
+  Extend by appending another `test_*` function.
 - [ ] **Side-by-side fixtures vs bb-common** — `helm template
   /home/rob/bb/bb-common/chart -f full-api-values.yaml` against the
   operator's output for the same `Package`. Documents intentional

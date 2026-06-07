@@ -74,6 +74,17 @@ func Generate(in Input) ([]client.Object, error) {
 		}
 		out = append(out, aps...)
 	}
+	customAPs, err := generateCustomAuthzPolicies(spec.Istio)
+	if err != nil {
+		return nil, fmt.Errorf("authorizationPolicies: %w", err)
+	}
+	out = append(out, customAPs...)
+
+	// Post-process: ambient/HBONE port 15008 injection. Runs after route
+	// netpols are emitted so they participate too.
+	if hboneEnabled(spec.NetworkPolicies, spec.Istio) {
+		injectHBonePorts(out)
+	}
 
 	for _, o := range out {
 		stampMetadata(in.Package, o)

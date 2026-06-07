@@ -1,0 +1,53 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: example-app
+  namespace: example-app
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  istio:
+    enabled: true
+    serviceEntries:
+      custom:
+        - name: external-https
+          labels:
+            tier: edge
+          spec:
+            hosts: [api.example.com]
+            location: MESH_EXTERNAL
+            resolution: DNS
+            ports:
+              - number: 443
+                name: https
+                protocol: TLS
+    authorizationPolicies:
+      # No defaults wanted from this fixture — only the user-provided escapes
+      # should appear.
+      defaults: { enabled: false }
+      custom:
+        - name: deny-from-foo
+          annotations:
+            origin: legal
+          spec:
+            action: DENY
+            rules:
+              - from:
+                  - source:
+                      namespaces: [foo]
+      additionalPolicies:
+        scoped-deny:
+          enabled: true
+          name: scoped-deny-override
+          spec:
+            action: DENY
+            selector:
+              matchLabels:
+                app.kubernetes.io/name: example-app
+            rules:
+              - to:
+                  - operation:
+                      methods: [DELETE]
+        disabled-entry:
+          enabled: false   # filtered, won't emit
+          spec:
+            action: ALLOW
