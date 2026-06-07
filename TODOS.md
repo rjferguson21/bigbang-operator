@@ -27,12 +27,18 @@ group are roughly ordered by recommended sequence (highest first).
 - [x] PeerAuthentication
 - [x] Default AuthorizationPolicies (`allow-nothing`, `allow-all-in-ns`)
 - [x] Generated AuthorizationPolicies from ingress shorthand
-- [ ] **Per-route AuthorizationPolicy** — gated on
-  `istio.authorizationPolicies.enabled`. Restricts to the gateway's
-  ServiceAccount (`cluster.local/ns/<gw-ns>/sa/<gw-name>-ingressgateway-service-account`).
-  Adds AP per inbound route to `pkg/generator/routes.go`.
-- [ ] **`Sidecar` resource** — `spec.istio.sidecar.enabled` emits a
-  namespace-wide Sidecar with `outboundTrafficPolicy.mode`.
+- [x] **Per-route AuthorizationPolicy** — gated on
+  `istio.authorizationPolicies.enabled` (or `ambient.enabled`). One AP per
+  gateway per inbound route, restricting to the gateway's ServiceAccount.
+  Lives in `pkg/generator/authorizationpolicies.go::generateAuthzFromRoutes`,
+  golden fixture under `testdata/{inputs,golden}/with-route-authz.yaml`.
+- [x] **`Sidecar` resource** — `spec.istio.sidecar.enabled` emits a
+  namespace-wide Sidecar with `outboundTrafficPolicy.mode` (default
+  REGISTRY_ONLY, or ALLOW_ANY). Suppressed when `ambient.enabled: true`
+  (mirrors bb-common). Owned + pruned by the reconciler. Lives in
+  `pkg/generator/istio.go::sidecarResource`, fixture
+  `testdata/{inputs,golden}/with-sidecar.yaml`, Sidecar CRD vendored
+  under `internal/controller/testdata/crds/`.
 - [ ] **Custom ServiceEntries / AuthorizationPolicies passthrough** —
   `istio.serviceEntries.custom[]`,
   `istio.authorizationPolicies.custom[]`,
@@ -43,9 +49,13 @@ group are roughly ordered by recommended sequence (highest first).
 - [x] 7 defaults + per-default disabling via `*bool`
 - [x] `additionalPolicies[]` raw passthrough
 - [x] Shorthand `egress.from.*` + `ingress.to.*` (k8s subkey)
-- [ ] **`definitions` — named subnet/port templates** referenced from
-  `from.<src>.to.definition.<name>: true`. bb-common feature; both
-  loki and kiali HRs use it heavily.
+- [x] **`definitions` — named subnet/port templates** referenced from
+  `from.<src>.to.definition.<name>: true` (egress) and
+  `to.<dst>.from.definition.<name>: true` (ingress). Built-in defaults:
+  egress `kubeAPI` (note: ports omitted vs bb-common's lookup-based
+  populate — override the definition to pin ports), ingress
+  `gateway`/`monitoring`. Lives in `pkg/generator/definitions.go`,
+  fixture `testdata/{inputs,golden}/with-definitions.yaml`.
 - [ ] **Shorthand `cidr` subkey** — `to.cidr.<key>` /
   `from.cidr.<key>`, parallel to `to.k8s.<key>`.
 - [ ] **`defaultsAsHooks`** — emit `-as-hook` copies of each default for
@@ -68,7 +78,7 @@ group are roughly ordered by recommended sequence (highest first).
 - [ ] **`prependReleaseName`** — name rewriting for route-emitted resources.
   `istio` and `networkPolicies` have their own independent flag; route
   generation should honor `routes.prependReleaseName` too.
-- [ ] **Per-route AuthorizationPolicy** — also listed under *Istio* above.
+- [x] **Per-route AuthorizationPolicy** — also listed under *Istio* above.
 
 ## Tests
 
@@ -106,6 +116,15 @@ group are roughly ordered by recommended sequence (highest first).
   artifacts + a narrow ClusterRole for what must be cluster-wide.
 - [ ] **Decide global config knob** (open item in TechnicalPlan §11) —
   cluster-wide defaults for `domain`, registry, etc.
+- [ ] **Purpose-built k3d cluster bootstrap** — `make dev-bbcluster`
+  currently `cd`s into `/home/rob/bb/bigbang` and shells out to
+  `bbtask default DISABLE_CORE=true`. That's brittle: the BB taskfile's
+  top-level `PACKAGE_PATH` var eagerly reverse-looks-up the cwd's git
+  origin against `bigbang/chart/values.yaml`, so the operator repo (not
+  in the umbrella) can't host the invocation. Replace with a self-contained
+  bootstrap — likely a `hack/local-dev/` script that calls the bb-k3d
+  chart + `helm install bigbang` directly with the same `disable-core`
+  values — so the operator owns its dev-cluster recipe end-to-end.
 
 ## Out of v1 (no action planned)
 

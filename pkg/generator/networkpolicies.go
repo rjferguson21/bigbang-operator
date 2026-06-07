@@ -65,9 +65,10 @@ type shorthandSource struct {
 }
 
 type shorthandPeer struct {
-	K8s map[string]shorthandTarget `json:"k8s,omitempty"`
-	// CIDR, Definition, Literal generators are not yet implemented; bb-common
-	// also supports those four under `to`/`from` but they're deferred here.
+	K8s        map[string]shorthandTarget `json:"k8s,omitempty"`
+	Definition map[string]shorthandTarget `json:"definition,omitempty"`
+	// CIDR and Literal generators are not yet implemented; bb-common
+	// also supports those under `to`/`from` but they're deferred here.
 }
 
 // shorthandTarget accepts either a bool (the common "true" form) or an
@@ -150,6 +151,17 @@ func expandShorthandEgress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPoli
 			np := buildShorthandEgressNetpol(pkg, prepend, npLabels, localKey, local, remoteKey, remote, target)
 			out = append(out, np)
 		}
+		for _, defName := range sortedKeys(local.To.Definition) {
+			if !local.To.Definition[defName].Enabled {
+				continue
+			}
+			def, err := resolveEgressDefinition(spec, defName)
+			if err != nil {
+				return nil, fmt.Errorf("networkPolicies.egress.from.%s.to.definition: %w", localKey, err)
+			}
+			np := buildEgressDefinitionNetpol(pkg, prepend, npLabels, localKey, local, defName, def)
+			out = append(out, np)
+		}
 	}
 	return out, nil
 }
@@ -180,6 +192,17 @@ func expandShorthandIngress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPol
 				return nil, fmt.Errorf("networkPolicies.ingress.to.%s.from.k8s: %w", localKey, err)
 			}
 			np := buildShorthandIngressNetpol(pkg, prepend, npLabels, parsedLocal, local, remoteKey, remote, target)
+			out = append(out, np)
+		}
+		for _, defName := range sortedKeys(local.From.Definition) {
+			if !local.From.Definition[defName].Enabled {
+				continue
+			}
+			def, err := resolveIngressDefinition(spec, defName)
+			if err != nil {
+				return nil, fmt.Errorf("networkPolicies.ingress.to.%s.from.definition: %w", localKey, err)
+			}
+			np := buildIngressDefinitionNetpol(pkg, prepend, npLabels, parsedLocal, local, defName, def)
 			out = append(out, np)
 		}
 	}

@@ -187,6 +187,7 @@ undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.
 #   kubectl apply -f config/samples/
 #
 # Full-cluster validation:
+#   make dev-bbcluster      # bbtask default DISABLE_CORE=true (k3d + Big Bang)
 #   make dev-deploy         # build image, import to k3d, install chart + polex
 #   kubectl apply -f config/samples/
 #   make dev-undeploy       # tear it all down
@@ -196,6 +197,8 @@ DEV_K3D_CLUSTER  ?= bb-helm
 DEV_NAMESPACE    ?= bigbang-operator
 DEV_RELEASE      ?= bigbang-operator
 DEV_POLEX        ?= hack/local-dev/policy-exception.yaml
+BB_TASKFILE      ?= /home/rob/bb/taskfiles/Taskfile.yml
+BB_DIR           ?= /home/rob/bb/bigbang
 
 .PHONY: dev-cluster
 dev-cluster: ## Print the kubectl context we'd deploy into.
@@ -203,6 +206,12 @@ dev-cluster: ## Print the kubectl context we'd deploy into.
 	@echo "k3d cluster:     $(DEV_K3D_CLUSTER)"
 	@echo "image:           $(DEV_IMG)"
 	@echo "namespace:       $(DEV_NAMESPACE)"
+
+.PHONY: dev-bbcluster
+dev-bbcluster: ## Create a k3d cluster with Big Bang installed (Istio + Kyverno, core apps disabled).
+	# Run from $(BB_DIR) so the taskfile's PACKAGE_PATH lookup (which matches
+	# the cwd's git origin against bigbang/chart/values.yaml) resolves cleanly.
+	cd $(BB_DIR) && task -t $(BB_TASKFILE) default DISABLE_CORE=true
 
 .PHONY: dev-image
 dev-image: ## Build the operator image and import it into the k3d cluster.

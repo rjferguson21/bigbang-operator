@@ -67,6 +67,13 @@ func Generate(in Input) ([]client.Object, error) {
 		}
 		out = append(out, aps...)
 	}
+	if spec.Routes != nil {
+		aps, err := generateAuthzFromRoutes(in.Package, spec.Routes, spec.Istio)
+		if err != nil {
+			return nil, fmt.Errorf("authorizationPolicies: %w", err)
+		}
+		out = append(out, aps...)
+	}
 
 	for _, o := range out {
 		stampMetadata(in.Package, o)

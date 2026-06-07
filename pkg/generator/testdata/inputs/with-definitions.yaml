@@ -1,0 +1,36 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: example-app
+  namespace: example-app
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  networkPolicies:
+    enabled: true
+    egress:
+      defaults:
+        enabled: false
+      definitions:
+        storage-subnets:
+          ports:
+            - port: 443
+              protocol: TCP
+          to:
+            - ipBlock: { cidr: 10.0.0.0/8 }
+            - ipBlock: { cidr: 172.16.0.0/12 }
+      from:
+        example-app:
+          to:
+            definition:
+              kubeAPI: true            # built-in default
+              storage-subnets: true    # user-defined
+              not-used: false          # disabled, should not emit
+    ingress:
+      defaults:
+        enabled: false
+      to:
+        example-app:8080:
+          from:
+            definition:
+              gateway: true            # built-in default
+              monitoring: true         # built-in default

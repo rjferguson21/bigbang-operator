@@ -1,0 +1,12 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: example-app
+  namespace: example-app
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  istio:
+    enabled: true
+    sidecar:
+      enabled: true
+      outboundTrafficPolicyMode: ALLOW_ANY

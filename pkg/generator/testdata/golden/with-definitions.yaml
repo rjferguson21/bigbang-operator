@@ -1,0 +1,146 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    generated.network-policies.bigbang.dev/from-definition: kubeAPI
+    generated.network-policies.bigbang.dev/local-key: example-app
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: egress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: allow-egress-from-example-app-to-kubeapi
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 10.0.0.0/8
+    - ipBlock:
+        cidr: 172.16.0.0/12
+    - ipBlock:
+        cidr: 192.168.0.0/16
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+  policyTypes:
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    generated.network-policies.bigbang.dev/from-definition: storage-subnets
+    generated.network-policies.bigbang.dev/local-key: example-app
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: egress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: allow-egress-from-example-app-to-storage-subnets
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  egress:
+  - ports:
+    - port: 443
+      protocol: TCP
+    to:
+    - ipBlock:
+        cidr: 10.0.0.0/8
+    - ipBlock:
+        cidr: 172.16.0.0/12
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+  policyTypes:
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    generated.network-policies.bigbang.dev/from-definition: gateway
+    generated.network-policies.bigbang.dev/local-key: example-app
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: ingress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: allow-ingress-to-example-app-tcp-port-8080-from-gateway
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-gateway
+      podSelector:
+        matchLabels:
+          istio: ingressgateway
+    ports:
+    - port: 8080
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    generated.network-policies.bigbang.dev/from-definition: monitoring
+    generated.network-policies.bigbang.dev/local-key: example-app
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: ingress
+    network-policies.bigbang.dev/source: bigbang-operator
+  name: allow-ingress-to-example-app-tcp-port-8080-from-monitoring
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: prometheus
+    ports:
+    - port: 8080
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+  policyTypes:
+  - Ingress

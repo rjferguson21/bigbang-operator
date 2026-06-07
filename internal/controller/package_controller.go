@@ -129,6 +129,7 @@ func managedListKinds() []client.ObjectList {
 		&istiosecv1.AuthorizationPolicyList{},
 		&istionetv1.VirtualServiceList{},
 		&istionetv1.ServiceEntryList{},
+		&istionetv1.SidecarList{},
 	}
 }
 
@@ -159,6 +160,12 @@ func extractItems(list client.ObjectList) ([]client.Object, error) {
 		}
 		return out, nil
 	case *istionetv1.ServiceEntryList:
+		out := make([]client.Object, len(l.Items))
+		for i := range l.Items {
+			out[i] = l.Items[i]
+		}
+		return out, nil
+	case *istionetv1.SidecarList:
 		out := make([]client.Object, len(l.Items))
 		for i := range l.Items {
 			out[i] = l.Items[i]
@@ -253,6 +260,7 @@ func (r *PackageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&istiosecv1.AuthorizationPolicy{}).
 		Owns(&istionetv1.VirtualService{}).
 		Owns(&istionetv1.ServiceEntry{}).
+		Owns(&istionetv1.Sidecar{}).
 		Named("package").
 		Complete(r)
 }

@@ -226,6 +226,72 @@ func buildAuthzFromShorthand(pkg *bbv1alpha1.Package, prepend bool, local *parse
 	}
 }
 
+// generateAuthzFromRoutes emits one AuthorizationPolicy per inbound route
+// per gateway, restricting callers to the gateway's ServiceAccount. Gated on
+// `istio.authorizationPolicies.enabled` (or `istio.ambient.enabled`).
+// Independent of `generateFromNetpol` — that flag only governs the shorthand
+// fan-out, not per-route policies.
+func generateAuthzFromRoutes(pkg *bbv1alpha1.Package, routes *bbv1alpha1.Routes, istio *bbv1alpha1.Istio) ([]client.Object, error) {
+	if !authzEnabled(istio) || routes == nil {
+		return nil, nil
+	}
+
+	var out []client.Object
+	for _, name := range sortedKeys(routes.Inbound) {
+		route, err := decodeInbound(routes.Inbound[name])
+		if err != nil {
+			return nil, fmt.Errorf("authz routes.inbound.%s: %w", name, err)
+		}
+		if !route.Enabled {
+			continue
+		}
+		for _, gw := range route.Gateways {
+			gwNS, gwName, ok := splitGateway(gw)
+			if !ok {
+				continue
+			}
+			out = append(out, buildAuthzFromRoute(route, gwNS, gwName))
+		}
+	}
+	return out, nil
+}
+
+func buildAuthzFromRoute(route *bbv1alpha1.InboundRoute, gwNS, gwName string) *istiosecv1.AuthorizationPolicy {
+	apName := fmt.Sprintf("%s-%s-authz-policy", serviceLeaf(route.Service), gwName)
+
+	rule := &istiosecv1beta1.Rule{
+		From: []*istiosecv1beta1.Rule_From{{
+			Source: &istiosecv1beta1.Source{
+				Principals: []string{fmt.Sprintf(
+					"cluster.local/ns/%s/sa/%s-ingressgateway-service-account",
+					gwNS, gwName)},
+			},
+		}},
+	}
+	if p := route.Port; p != nil {
+		if n := portNumber(p); n != 0 {
+			rule.To = []*istiosecv1beta1.Rule_To{{
+				Operation: &istiosecv1beta1.Operation{
+					Ports: []string{strconv.FormatUint(uint64(n), 10)},
+				},
+			}}
+		}
+	}
+
+	return &istiosecv1.AuthorizationPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        apName,
+			Labels:      mergeMaps(route.Labels, nil),
+			Annotations: mergeMaps(route.Annotations, nil),
+		},
+		Spec: istiosecv1beta1.AuthorizationPolicy{
+			Selector: &istiotypev1beta1.WorkloadSelector{MatchLabels: route.Selector},
+			Action:   istiosecv1beta1.AuthorizationPolicy_ALLOW,
+			Rules:    []*istiosecv1beta1.Rule{rule},
+		},
+	}
+}
+
 func lowercase(s string) string {
 	out := []byte(s)
 	for i, c := range out {

@@ -1,0 +1,134 @@
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+  name: default-peer-auth
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  mtls:
+    mode: STRICT
+status: {}
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+  name: example-app
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  gateways:
+  - istio-gateway/public-ingressgateway
+  - istio-gateway/passthrough-ingressgateway
+  hosts:
+  - example-app.bigbang.mil
+  http:
+  - route:
+    - destination:
+        host: example-app.example-app.svc.cluster.local
+        port:
+          number: 8080
+status: {}
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+  name: example-app-internal
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  hosts:
+  - example-app.bigbang.mil
+  location: MESH_INTERNAL
+  ports:
+  - name: http
+    number: 8080
+    protocol: HTTP
+  resolution: DNS
+status: {}
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+  name: example-app-public-ingressgateway-authz-policy
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  rules:
+  - from:
+    - source:
+        principals:
+        - cluster.local/ns/istio-gateway/sa/public-ingressgateway-ingressgateway-service-account
+    to:
+    - operation:
+        ports:
+        - "8080"
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+status: {}
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+  name: example-app-passthrough-ingressgateway-authz-policy
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  rules:
+  - from:
+    - source:
+        principals:
+        - cluster.local/ns/istio-gateway/sa/passthrough-ingressgateway-ingressgateway-service-account
+    to:
+    - operation:
+        ports:
+        - "8080"
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+status: {}

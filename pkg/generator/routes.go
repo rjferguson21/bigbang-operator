@@ -22,8 +22,8 @@ import (
 // Per inbound route the operator emits a VirtualService, a paired
 // ServiceEntry, and (when networkPolicies.enabled) a gateway-permitting
 // NetworkPolicy. Per outbound route it emits a single ServiceEntry.
-// AuthorizationPolicy emission is deferred until istio.authorizationPolicies
-// support lands more broadly.
+// Per-route AuthorizationPolicies are emitted by generateAuthzFromRoutes,
+// gated on istio.authorizationPolicies.enabled.
 func generateRoutes(pkg *bbv1alpha1.Package, spec *bbv1alpha1.Routes) ([]client.Object, error) {
 	if spec == nil {
 		return nil, nil
