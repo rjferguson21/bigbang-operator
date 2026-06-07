@@ -102,6 +102,10 @@ cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 bb-smoke: ## Run the Big Bang reconciler smoke test against the current cluster (requires `make dev-deploy`).
 	./test/e2e/bb_smoke.sh
 
+.PHONY: podinfo-smoke
+podinfo-smoke: ## Deploy the upstream podinfo chart + a Package CR shaped after BB's podinfo values, then assert.
+	./test/e2e/podinfo_smoke.sh
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	"$(GOLANGCI_LINT)" run

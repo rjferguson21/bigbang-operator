@@ -45,7 +45,11 @@ func generateRoutes(pkg *bbv1alpha1.Package, spec *bbv1alpha1.Routes) ([]client.
 		if err := validateInbound(name, route); err != nil {
 			return nil, err
 		}
-		out = append(out, buildVirtualService(pkg, prepend, name, route))
+		vs, err := buildVirtualService(pkg, prepend, name, route)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, vs)
 		out = append(out, buildInboundServiceEntry(pkg, prepend, name, route))
 		if netpolsEnabled {
 			out = append(out, buildInboundNetpols(pkg, prepend, name, route)...)
@@ -134,16 +138,11 @@ func sortedKeys[M ~map[string]V, V any](m M) []string {
 	return out
 }
 
-func buildVirtualService(pkg *bbv1alpha1.Package, prepend bool, name string, r *bbv1alpha1.InboundRoute) client.Object {
-	dest := &istionetv1alpha3.Destination{
-		Host: r.Service,
+func buildVirtualService(pkg *bbv1alpha1.Package, prepend bool, name string, r *bbv1alpha1.InboundRoute) (client.Object, error) {
+	httpRoutes, err := buildHTTPRoutes(r)
+	if err != nil {
+		return nil, fmt.Errorf("routes.inbound.%s.http: %w", name, err)
 	}
-	if r.ContainerPort != nil {
-		dest.Port = &istionetv1alpha3.PortSelector{Number: portNumber(r.ContainerPort)}
-	} else if r.Port != nil {
-		dest.Port = &istionetv1alpha3.PortSelector{Number: portNumber(r.Port)}
-	}
-
 	return &istionetv1.VirtualService{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        prependName(prepend, pkg.Name, name),
@@ -153,11 +152,36 @@ func buildVirtualService(pkg *bbv1alpha1.Package, prepend bool, name string, r *
 		Spec: istionetv1alpha3.VirtualService{
 			Hosts:    r.Hosts,
 			Gateways: r.Gateways,
-			Http: []*istionetv1alpha3.HTTPRoute{{
-				Route: []*istionetv1alpha3.HTTPRouteDestination{{Destination: dest}},
-			}},
+			Http:     httpRoutes,
 		},
+	}, nil
+}
+
+// buildHTTPRoutes returns the spec.http slice. When the user supplies
+// `route.http`, each raw HTTPRoute entry is JSON-round-tripped into the
+// istio proto type (so SSA marshals it correctly). Otherwise the operator
+// emits the single-destination default that mirrors bb-common.
+func buildHTTPRoutes(r *bbv1alpha1.InboundRoute) ([]*istionetv1alpha3.HTTPRoute, error) {
+	if len(r.Http) > 0 {
+		out := make([]*istionetv1alpha3.HTTPRoute, 0, len(r.Http))
+		for i, raw := range r.Http {
+			hr := &istionetv1alpha3.HTTPRoute{}
+			if err := json.Unmarshal(raw.Raw, hr); err != nil {
+				return nil, fmt.Errorf("http[%d]: %w", i, err)
+			}
+			out = append(out, hr)
+		}
+		return out, nil
 	}
+	dest := &istionetv1alpha3.Destination{Host: r.Service}
+	if r.ContainerPort != nil {
+		dest.Port = &istionetv1alpha3.PortSelector{Number: portNumber(r.ContainerPort)}
+	} else if r.Port != nil {
+		dest.Port = &istionetv1alpha3.PortSelector{Number: portNumber(r.Port)}
+	}
+	return []*istionetv1alpha3.HTTPRoute{{
+		Route: []*istionetv1alpha3.HTTPRouteDestination{{Destination: dest}},
+	}}, nil
 }
 
 func buildInboundServiceEntry(pkg *bbv1alpha1.Package, prepend bool, name string, r *bbv1alpha1.InboundRoute) client.Object {

@@ -107,8 +107,14 @@ group are roughly ordered by recommended sequence (highest first).
 
 - [x] Inbound: VirtualService + ServiceEntry + gateway-permitting NetworkPolicy
 - [x] Outbound: ServiceEntry
-- [ ] **Advanced HTTP rules** — `http[]` array on inbound routes (match,
-  rewrite, retries, fault injection) merged into the VirtualService.
+- [x] **Advanced HTTP rules** — `routes.inbound.<n>.http[]` accepts raw
+  Istio HTTPRoute entries (match/rewrite/retries/fault/etc) and replaces
+  the simple single-destination default. Each entry is JSON-round-tripped
+  through the istio proto so SSA marshals it correctly; istiod validates
+  the spec at apply time. Lives in `pkg/generator/routes.go::buildHTTPRoutes`,
+  fixture `testdata/{inputs,golden}/with-advanced-http.yaml`. Type added
+  as `Http []apiextensionsv1.JSON` on `InboundRoute` (the field is opaque
+  in the CRD since the routes map is preserve-unknown-fields anyway).
 - [x] **`prependReleaseName`** — `routes.prependReleaseName: true` now
   prepends `<package-name>-` to VirtualService, inbound ServiceEntry,
   gateway-permitting NetworkPolicy, outbound ServiceEntry, and per-route

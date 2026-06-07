@@ -1,6 +1,9 @@
 package v1alpha1
 
-import "k8s.io/apimachinery/pkg/util/intstr"
+import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+)
 
 // InboundRoute is the typed view of one entry under `routes.inbound.<name>`.
 // The generator decodes the RoutesInbound map values (apiextensionsv1.JSON,
@@ -38,6 +41,14 @@ type InboundRoute struct {
 	// AuthorizationPolicy.
 	// +optional
 	Selector map[string]string `json:"selector,omitempty"`
+
+	// Http is an optional array of Istio HTTPRoute objects merged directly
+	// into the VirtualService's spec.http. When set, it overrides the
+	// simple single-destination default the operator would otherwise emit
+	// — use it for match/rewrite/retries/fault-injection. Each entry is
+	// passed through as raw JSON and validated by Istio at apply time.
+	// +optional
+	Http []apiextensionsv1.JSON `json:"http,omitempty"`
 
 	// Resolution is the DNS resolution mode of the companion ServiceEntry.
 	// One of DNS, STATIC, DNS_ROUND_ROBIN, DYNAMIC_DNS, NONE. Default DNS.

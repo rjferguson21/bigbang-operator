@@ -1,0 +1,37 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: example-app
+  namespace: example-app
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  istio:
+    enabled: true
+  routes:
+    inbound:
+      api:
+        enabled: true
+        gateways: [istio-gateway/public-ingressgateway]
+        hosts: [api.example.com]
+        service: example-app
+        port: 8080
+        # Advanced HTTPRoute: prefix match + rewrite + retries + fault injection.
+        http:
+          - match:
+              - uri:
+                  prefix: /v2/
+            rewrite:
+              uri: /
+            route:
+              - destination:
+                  host: example-app
+                  port:
+                    number: 8080
+            retries:
+              attempts: 3
+              perTryTimeout: 2s
+              retryOn: gateway-error,connect-failure
+            fault:
+              delay:
+                percentage: { value: 10 }
+                fixedDelay: 500ms

@@ -63,10 +63,30 @@ func generateNetworkPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPo
 // shorthandSource is one decoded `egress.from.<src>` or `ingress.to.<dst>`
 // outer-map value. The inner `to.k8s` / `from.k8s` maps use the same
 // pattern: `<key> -> true | { enabled, podSelector?, namespaceSelector? }`.
+//
+// The custom unmarshaler tolerates two podSelector shapes (matches what
+// bb-common accepts):
+//   - flat:   podSelector: {app: foo}
+//   - nested: podSelector: {matchLabels: {app: foo}}
 type shorthandSource struct {
-	PodSelector map[string]string `json:"podSelector,omitempty"`
+	PodSelector map[string]string `json:"-"`
 	To          *shorthandPeer    `json:"to,omitempty"`   // egress
 	From        *shorthandPeer    `json:"from,omitempty"` // ingress
+}
+
+func (s *shorthandSource) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		PodSelector map[string]interface{} `json:"podSelector,omitempty"`
+		To          *shorthandPeer         `json:"to,omitempty"`
+		From        *shorthandPeer         `json:"from,omitempty"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	s.PodSelector = flattenMatchLabels(raw.PodSelector)
+	s.To = raw.To
+	s.From = raw.From
+	return nil
 }
 
 type shorthandPeer struct {
