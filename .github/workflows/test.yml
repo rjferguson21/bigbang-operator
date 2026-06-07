@@ -2,22 +2,50 @@ name: Tests
 
 on:
   push:
+    branches: [main]
   pull_request:
+
+# A new push to the same PR / branch supersedes any in-flight run.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    name: Run on Ubuntu
+    name: test
     runs-on: ubuntu-latest
     steps:
-      - name: Clone the code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # setup-go's built-in cache covers GOPATH/pkg/mod + ~/.cache/go-build.
 
-      - name: Running Tests
+      # Envtest control-plane binaries (etcd + kube-apiserver) are heavy and
+      # change rarely — cache them separately keyed on the Kubernetes version
+      # the Makefile pins (ENVTEST_K8S_VERSION).
+      - name: Cache envtest binaries
+        uses: actions/cache@v4
+        with:
+          path: bin
+          key: ${{ runner.os }}-envtest-${{ hashFiles('Makefile') }}
+          restore-keys: ${{ runner.os }}-envtest-
+
+      # Re-runs manifests + generate + fmt + vet + setup-envtest before the
+      # tests, then exercises the generator goldens and the controller envtest.
+      - name: Run tests
+        run: make test
+
+      # Catch forgotten regenerations: if the API types changed and the
+      # committer didn't run `make manifests generate`, the diff exposes it.
+      - name: Verify generated artifacts are up to date
         run: |
-          go mod tidy
-          make test
+          git diff --exit-code -- \
+            config/crd/bases \
+            chart/templates/crds \
+            api/v1alpha1/zz_generated.deepcopy.go
+
+      - name: Build manager binary
+        run: make build
