@@ -25,11 +25,21 @@ type resolvedDefinition struct {
 }
 
 // builtInEgressDefinitions mirrors bb-common's
-// network-policies/egress/definitions/_default.tpl. `kubeAPI` here omits the
-// ports list because bb-common populates it at render time via a live lookup
-// of the kubernetes Service — the operator can't replicate that cleanly, so
-// callers must override the definition if they need a port filter.
-func builtInEgressDefinitions() map[string]resolvedDefinition {
+// network-policies/egress/definitions/_default.tpl. bb-common restricts
+// `kubeAPI` to the API server's ports via a render-time lookup of the
+// `default/kubernetes` Service; the controller performs the same lookup at
+// reconcile time and passes the target ports in. With no ports (lookup
+// failed or unavailable) the definition allows all ports, exactly like
+// bb-common when its lookup returns nothing.
+func builtInEgressDefinitions(kubeAPIPorts []intstr.IntOrString) map[string]resolvedDefinition {
+	tcp := corev1.ProtocolTCP
+	var ports []networkingv1.NetworkPolicyPort
+	for i := range kubeAPIPorts {
+		ports = append(ports, networkingv1.NetworkPolicyPort{
+			Port:     &kubeAPIPorts[i],
+			Protocol: &tcp,
+		})
+	}
 	return map[string]resolvedDefinition{
 		"kubeAPI": {
 			peers: []networkingv1.NetworkPolicyPeer{
@@ -37,6 +47,7 @@ func builtInEgressDefinitions() map[string]resolvedDefinition {
 				{IPBlock: &networkingv1.IPBlock{CIDR: "172.16.0.0/12"}},
 				{IPBlock: &networkingv1.IPBlock{CIDR: "192.168.0.0/16"}},
 			},
+			ports: ports,
 		},
 	}
 }
@@ -63,8 +74,8 @@ func builtInIngressDefinitions() map[string]resolvedDefinition {
 // resolveEgressDefinition returns the built-in definition for `name`, with
 // any user override (under `networkPolicies.egress.definitions.<name>`)
 // applied. Unknown names produce an error so typos surface at reconcile.
-func resolveEgressDefinition(spec *bbv1alpha1.NetworkPolicies, name string) (*resolvedDefinition, error) {
-	defs := builtInEgressDefinitions()
+func resolveEgressDefinition(spec *bbv1alpha1.NetworkPolicies, name string, kubeAPIPorts []intstr.IntOrString) (*resolvedDefinition, error) {
+	defs := builtInEgressDefinitions(kubeAPIPorts)
 	if spec.Egress != nil {
 		for k, raw := range spec.Egress.Definitions {
 			parsed, err := parseEgressDefinition(raw)

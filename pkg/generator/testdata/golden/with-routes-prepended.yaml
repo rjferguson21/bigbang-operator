@@ -64,11 +64,10 @@ metadata:
 spec:
   hosts:
   - myapp.bigbang.mil
-  location: MESH_INTERNAL
   ports:
-  - name: http
-    number: 8080
-    protocol: HTTP
+  - name: https
+    number: 443
+    protocol: HTTPS
   resolution: DNS
 status: {}
 ---

@@ -151,10 +151,12 @@ func generateAuthzFromIngressShorthand(pkg *bbv1alpha1.Package, npSpec *bbv1alph
 				return nil, fmt.Errorf("authz ingress.to.%s.from.k8s: %w", localKey, err)
 			}
 			ap := buildAuthzFromShorthand(pkg, prepend, parsedLocal, local, remoteKey, remote)
+			applyShorthandMetadata(ap, mergeShorthandMetadata(local.Metadata, target.Metadata))
 			out = append(out, ap)
 		}
 		for _, cidrKey := range sortedKeys(local.From.Cidr) {
-			if !local.From.Cidr[cidrKey].Enabled {
+			target := local.From.Cidr[cidrKey]
+			if !target.Enabled {
 				continue
 			}
 			cidr, err := parseIngressCIDRKey(cidrKey)
@@ -162,6 +164,7 @@ func generateAuthzFromIngressShorthand(pkg *bbv1alpha1.Package, npSpec *bbv1alph
 				return nil, fmt.Errorf("authz ingress.to.%s.from.cidr: %w", localKey, err)
 			}
 			ap := buildAuthzFromCIDR(pkg, prepend, parsedLocal, local, cidrKey, cidr)
+			applyShorthandMetadata(ap, mergeShorthandMetadata(local.Metadata, target.Metadata))
 			out = append(out, ap)
 		}
 	}

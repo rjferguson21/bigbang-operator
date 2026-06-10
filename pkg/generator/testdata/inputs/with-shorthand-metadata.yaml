@@ -1,0 +1,49 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: example-app
+  namespace: example-app
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  istio:
+    enabled: true
+    authorizationPolicies:
+      enabled: true
+      defaults:
+        enabled: false
+  networkPolicies:
+    enabled: true
+    egress:
+      defaults:
+        enabled: false
+      from:
+        example-app:
+          metadata:
+            labels:
+              team: bigbang
+            annotations:
+              note: local-level
+          to:
+            k8s:
+              backend/api:8080:
+                metadata:
+                  labels:
+                    team: backend
+                  annotations:
+                    rule: remote-level
+            cidr:
+              10.0.0.0/8:443: true
+    ingress:
+      defaults:
+        enabled: false
+      to:
+        example-app:8080:
+          metadata:
+            labels:
+              team: bigbang
+          from:
+            k8s:
+              frontend/web:
+                metadata:
+                  annotations:
+                    rule: web-ingress

@@ -1,0 +1,48 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: example-app
+  namespace: example-app
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  networkPolicies:
+    enabled: true
+    egress:
+      defaults:
+        enabled: false
+      from:
+        example-app:
+          to:
+            literal:
+              vault:
+                spec:
+                  - to:
+                      - ipBlock:
+                          cidr: 10.10.0.0/16
+                    ports:
+                      - port: 8200
+                        protocol: TCP
+    ingress:
+      defaults:
+        enabled: false
+      to:
+        example-app:8080:
+          from:
+            literal:
+              loadbalancer:
+                metadata:
+                  labels:
+                    purpose: lb-ingress
+                spec:
+                  - from:
+                      - ipBlock:
+                          cidr: 172.20.0.0/24
+                    ports:
+                      - port: 8080
+                        protocol: TCP
+              disabled-rule:
+                enabled: false
+                spec:
+                  - from:
+                      - ipBlock:
+                          cidr: 192.168.0.0/16

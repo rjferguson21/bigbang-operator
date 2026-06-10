@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	istiosecv1 "istio.io/client-go/pkg/apis/security/v1"
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -164,6 +165,85 @@ func TestReconcile_DriftRecovery(t *testing.T) {
 	waitFor(t, func() error {
 		got := &networkingv1.NetworkPolicy{}
 		return te.k8s.Get(ctx, target, got)
+	})
+}
+
+// TestReconcile_KubeAPIDefinitionPorts verifies the controller resolves the
+// built-in kubeAPI egress definition's ports from the default/kubernetes
+// Service (bb-common does the same via a render-time lookup).
+func TestReconcile_KubeAPIDefinitionPorts(t *testing.T) {
+	te := startEnv(t)
+	te.ensureNamespace(t, "rec-kubeapi")
+	ctx := context.Background()
+
+	var apiSvc corev1.Service
+	if err := te.k8s.Get(ctx, types.NamespacedName{Namespace: "default", Name: "kubernetes"}, &apiSvc); err != nil {
+		t.Fatalf("get default/kubernetes Service: %v", err)
+	}
+	if len(apiSvc.Spec.Ports) == 0 {
+		t.Fatal("default/kubernetes Service has no ports")
+	}
+
+	pkg := newPackage("example-app", "rec-kubeapi", func(p *bbv1alpha1.Package) {
+		p.Spec.NetworkPolicies = &bbv1alpha1.NetworkPolicies{
+			Enabled: true,
+			Egress: &bbv1alpha1.NetworkPoliciesEgress{
+				From: map[string]apiextensionsv1.JSON{
+					"example-app": rawJSON(`{"to":{"definition":{"kubeAPI":true}}}`),
+				},
+			},
+		}
+	})
+	mustCreate(t, te.k8s, pkg)
+
+	waitFor(t, func() error {
+		var np networkingv1.NetworkPolicy
+		if err := te.k8s.Get(ctx, types.NamespacedName{Namespace: "rec-kubeapi", Name: "allow-egress-from-example-app-to-kubeapi"}, &np); err != nil {
+			return err
+		}
+		if len(np.Spec.Egress) != 1 {
+			return fmt.Errorf("want 1 egress rule, got %d", len(np.Spec.Egress))
+		}
+		ports := np.Spec.Egress[0].Ports
+		if len(ports) != len(apiSvc.Spec.Ports) {
+			return fmt.Errorf("want %d ports (from default/kubernetes), got %d", len(apiSvc.Spec.Ports), len(ports))
+		}
+		want := apiSvc.Spec.Ports[0].TargetPort.String()
+		if got := ports[0].Port.String(); got != want {
+			return fmt.Errorf("port = %s, want targetPort %s", got, want)
+		}
+		return nil
+	})
+}
+
+// TestReconcile_DefaultsAsHooksWarning verifies a Package that enables the
+// (Helm-only) defaultsAsHooks knob gets a Warning event instead of a silent
+// no-op.
+func TestReconcile_DefaultsAsHooksWarning(t *testing.T) {
+	te := startEnv(t)
+	te.ensureNamespace(t, "rec-hooks")
+	ctx := context.Background()
+
+	enabled := true
+	pkg := newPackage("hooks-app", "rec-hooks", func(p *bbv1alpha1.Package) {
+		p.Spec.NetworkPolicies = &bbv1alpha1.NetworkPolicies{
+			Enabled:         true,
+			DefaultsAsHooks: &bbv1alpha1.NetworkPoliciesDefaultsAsHooks{Enabled: &enabled},
+		}
+	})
+	mustCreate(t, te.k8s, pkg)
+
+	waitFor(t, func() error {
+		var events corev1.EventList
+		if err := te.k8s.List(ctx, &events, client.InNamespace("rec-hooks")); err != nil {
+			return err
+		}
+		for _, e := range events.Items {
+			if e.Reason == "UnsupportedField" && e.Type == corev1.EventTypeWarning {
+				return nil
+			}
+		}
+		return fmt.Errorf("no UnsupportedField warning event found (%d events)", len(events.Items))
 	})
 }
 

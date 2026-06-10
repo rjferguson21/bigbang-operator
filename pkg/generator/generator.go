@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bbv1alpha1 "bigbang.dev/operator/api/v1alpha1"
@@ -18,6 +19,24 @@ type Input struct {
 	// Scheme is used to set GVK on emitted objects (so SSA marshals them
 	// correctly). It must contain the istio and networking types.
 	Scheme *runtime.Scheme
+	// KubeAPIPorts restricts the built-in `kubeAPI` egress definition to
+	// the API server's target ports. The controller fills it from the
+	// `default/kubernetes` Service (mirroring bb-common's render-time
+	// lookup); empty means no port restriction.
+	KubeAPIPorts []intstr.IntOrString
+}
+
+// Warnings returns human-readable notes about spec fields the generator
+// accepts but deliberately does not honor. The controller surfaces them as
+// Events on the Package so a migrated bb-common values file never
+// silently loses behavior.
+func Warnings(pkg *bbv1alpha1.Package) []string {
+	var out []string
+	np := pkg.Spec.NetworkPolicies
+	if np != nil && np.DefaultsAsHooks != nil && np.DefaultsAsHooks.Enabled != nil && *np.DefaultsAsHooks.Enabled {
+		out = append(out, "networkPolicies.defaultsAsHooks is ignored: Helm hooks have no operator equivalent (default policies are applied and kept in sync continuously)")
+	}
+	return out
 }
 
 // Generate returns the desired objects for in.Package. The slice is in a
@@ -42,7 +61,7 @@ func Generate(in Input) ([]client.Object, error) {
 	}
 
 	if spec.NetworkPolicies != nil && spec.NetworkPolicies.Enabled {
-		objs, err := generateNetworkPolicies(in.Package, spec.NetworkPolicies, spec.Istio)
+		objs, err := generateNetworkPolicies(in.Package, spec.NetworkPolicies, spec.Istio, in.KubeAPIPorts)
 		if err != nil {
 			return nil, fmt.Errorf("networkPolicies: %w", err)
 		}

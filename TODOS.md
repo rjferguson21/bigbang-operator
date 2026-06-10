@@ -72,19 +72,23 @@ group are roughly ordered by recommended sequence (highest first).
 - [x] **`definitions` — named subnet/port templates** referenced from
   `from.<src>.to.definition.<name>: true` (egress) and
   `to.<dst>.from.definition.<name>: true` (ingress). Built-in defaults:
-  egress `kubeAPI` (note: ports omitted vs bb-common's lookup-based
-  populate — override the definition to pin ports), ingress
-  `gateway`/`monitoring`. Lives in `pkg/generator/definitions.go`,
-  fixture `testdata/{inputs,golden}/with-definitions.yaml`.
+  egress `kubeAPI` (ports resolved at reconcile time from the
+  `default/kubernetes` Service via `Input.KubeAPIPorts`, mirroring
+  bb-common's render-time lookup; all-ports when the lookup is empty),
+  ingress `gateway`/`monitoring`. Lives in `pkg/generator/definitions.go`,
+  fixture `testdata/{inputs,golden}/with-definitions.yaml`, envtest
+  `TestReconcile_KubeAPIDefinitionPorts`.
 - [x] **Shorthand `cidr` subkey** — `to.cidr.<key>` /
   `from.cidr.<key>`, parallel to `to.k8s.<key>`. Egress key:
   `[<tcp|udp>://]<cidr>[:<ports>]`; ingress key: `<cidr>` (ports come
   from local key). `0.0.0.0/0` renders as `…-anywhere`. Parsers in
   `pkg/generator/shorthand.go`, builders in `networkpolicies.go`,
   fixture `testdata/{inputs,golden}/with-cidr-shorthand.yaml`.
-- [ ] **`defaultsAsHooks`** — emit `-as-hook` copies of each default for
-  Helm hook phases (`pre-install`, `pre-upgrade`, `post-delete`).
-  Only matters if a Helm-style install model returns.
+- [x] **`defaultsAsHooks`** — Helm hooks have no operator equivalent, so
+  the fields stay accepted (schema-generated types) but a Package that
+  enables them gets a Warning Event (`UnsupportedField`) instead of a
+  silent no-op. `generator.Warnings` + recorder wiring in the controller;
+  envtest `TestReconcile_DefaultsAsHooksWarning`.
 - [x] **`hbonePortInjection`** — post-pass that appends TCP/15008 to every
   egress/ingress rule that has explicit ports AND at least one
   namespaceSelector/podSelector peer. Auto-on when `istio.ambient.enabled:
@@ -226,12 +230,19 @@ bottom items are niche.
   `{app.kubernetes.io/name: <gw>, istio: ingressgateway}`. Ours only uses
   `app.kubernetes.io/name`. Functionally equivalent on real BB gateways
   (both labels present), but a stricter selector is closer to the source.
-- [ ] **`metadata-overrides` on shorthand netpols** — bb-common merges
-  per-rule `metadata.{labels,annotations}` from both the local and remote
-  shorthand entries. Niche; raise only if a real package needs it.
-- [ ] **`from-spec-literal` egress rule** — raw NetworkPolicy egress
-  spec under `to.<key>.spec`. `additionalPolicies[]` covers the same need
-  with cleaner ergonomics; deferred.
+- [x] **`metadata-overrides` on shorthand netpols** — `metadata.{labels,
+  annotations}` accepted at the local (pod) and remote (rule) level;
+  remote wins over local, generated keys win over both (bb-common merge
+  order). Applied to shorthand NetworkPolicies and the AuthorizationPolicies
+  generated from them. Fixture
+  `testdata/{inputs,golden}/with-shorthand-metadata.yaml`.
+- [x] **`from-spec-literal` rules** — `to.literal.<key>` (egress) and
+  `from.literal.<key>` (ingress) emit the rule value's `spec` array
+  verbatim as a NetworkPolicy (`allow-egress-from-<src>-to-<key>` /
+  `allow-ingress-to-<dst>-from-<key>`), with the
+  `from-spec-literal` annotation bb-common stamps. Literal specs bypass
+  `excludeCIDRs`, same as bb-common. Fixture
+  `testdata/{inputs,golden}/with-literal.yaml`.
 
 ## Out of v1 (no action planned)
 

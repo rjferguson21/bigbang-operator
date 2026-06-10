@@ -68,10 +68,9 @@ metadata:
 spec:
   hosts:
   - harbor.dev.bigbang.mil
-  location: MESH_INTERNAL
   ports:
-  - name: http
+  - name: https
     number: 443
-    protocol: HTTP
+    protocol: HTTPS
   resolution: DNS
 status: {}

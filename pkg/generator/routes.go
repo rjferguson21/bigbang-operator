@@ -212,10 +212,15 @@ func buildHTTPRoutes(r *bbv1alpha1.InboundRoute) ([]*istionetv1alpha3.HTTPRoute,
 	}}, nil
 }
 
+// buildInboundServiceEntry registers the route's public hostname so that
+// REGISTRY_ONLY workloads can reach it through the ingress gateway. Matches
+// bb-common: MESH_EXTERNAL over HTTPS/443 (gateway-facing, not the app
+// port), with resolution NONE inferred for wildcard hosts since Istio
+// rejects DNS resolution for them.
 func buildInboundServiceEntry(pkg *bbv1alpha1.Package, prepend bool, name string, r *bbv1alpha1.InboundRoute) client.Object {
-	port := portNumber(r.Port)
-	if r.ContainerPort != nil {
-		port = portNumber(r.ContainerPort)
+	resolution := r.Resolution
+	if resolution == "" && hasWildcardHost(r.Hosts) {
+		resolution = "NONE"
 	}
 	return &istionetv1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{
@@ -225,15 +230,24 @@ func buildInboundServiceEntry(pkg *bbv1alpha1.Package, prepend bool, name string
 		},
 		Spec: istionetv1alpha3.ServiceEntry{
 			Hosts:      r.Hosts,
-			Location:   istionetv1alpha3.ServiceEntry_MESH_INTERNAL,
-			Resolution: parseResolution(r.Resolution),
+			Location:   istionetv1alpha3.ServiceEntry_MESH_EXTERNAL,
+			Resolution: parseResolution(resolution),
 			Ports: []*istionetv1alpha3.ServicePort{{
-				Number:   port,
-				Name:     "http",
-				Protocol: "HTTP",
+				Number:   443,
+				Name:     "https",
+				Protocol: "HTTPS",
 			}},
 		},
 	}
+}
+
+func hasWildcardHost(hosts []string) bool {
+	for _, h := range hosts {
+		if strings.Contains(h, "*") {
+			return true
+		}
+	}
+	return false
 }
 
 func buildInboundNetpols(pkg *bbv1alpha1.Package, prepend bool, _ string, r *bbv1alpha1.InboundRoute) []client.Object {

@@ -23,6 +23,14 @@ rules:
   - apiGroups: ["networking.istio.io"]
     resources: [sidecars, serviceentries, virtualservices]
     verbs: [get, list, watch, create, update, patch, delete]
+  # kubeAPI definition port lookup (default/kubernetes Service)
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [get]
+  # warning Events on Packages (e.g. unsupported defaultsAsHooks)
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

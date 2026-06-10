@@ -92,8 +92,10 @@ func startEnv(t *testing.T) *testEnv {
 		t.Fatalf("manager: %v", err)
 	}
 	if err := (&controller.PackageReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		APIReader: mgr.GetAPIReader(),
+		Recorder:  mgr.GetEventRecorderFor("bigbang-operator"),
 	}).SetupWithManager(mgr); err != nil {
 		t.Fatalf("SetupWithManager: %v", err)
 	}

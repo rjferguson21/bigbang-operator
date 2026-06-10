@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"regexp"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -11,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 
 	bbv1alpha1 "bigbang.dev/operator/api/v1alpha1"
 )
@@ -31,14 +33,14 @@ const (
 
 // generateNetworkPolicies renders default NetworkPolicies, shorthand
 // egress/ingress, and raw policies declared under `additionalPolicies[]`.
-func generateNetworkPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies, istio *bbv1alpha1.Istio) ([]client.Object, error) {
+func generateNetworkPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies, istio *bbv1alpha1.Istio, kubeAPIPorts []intstr.IntOrString) ([]client.Object, error) {
 	var out []client.Object
 
 	out = append(out, defaultEgressPolicies(pkg, spec, istio)...)
 	out = append(out, defaultIngressPolicies(pkg, spec, istio)...)
 
 	if spec.Egress != nil {
-		objs, err := expandShorthandEgress(pkg, spec)
+		objs, err := expandShorthandEgress(pkg, spec, kubeAPIPorts)
 		if err != nil {
 			return nil, err
 		}
@@ -79,14 +81,16 @@ func generateNetworkPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPo
 //   - flat:   podSelector: {app: foo}
 //   - nested: podSelector: {matchLabels: {app: foo}}
 type shorthandSource struct {
-	PodSelector map[string]string `json:"-"`
-	To          *shorthandPeer    `json:"to,omitempty"`   // egress
-	From        *shorthandPeer    `json:"from,omitempty"` // ingress
+	PodSelector map[string]string  `json:"-"`
+	Metadata    *shorthandMetadata `json:"metadata,omitempty"`
+	To          *shorthandPeer     `json:"to,omitempty"`   // egress
+	From        *shorthandPeer     `json:"from,omitempty"` // ingress
 }
 
 func (s *shorthandSource) UnmarshalJSON(b []byte) error {
 	var raw struct {
 		PodSelector map[string]interface{} `json:"podSelector,omitempty"`
+		Metadata    *shorthandMetadata     `json:"metadata,omitempty"`
 		To          *shorthandPeer         `json:"to,omitempty"`
 		From        *shorthandPeer         `json:"from,omitempty"`
 	}
@@ -94,26 +98,100 @@ func (s *shorthandSource) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	s.PodSelector = flattenMatchLabels(raw.PodSelector)
+	s.Metadata = raw.Metadata
 	s.To = raw.To
 	s.From = raw.From
 	return nil
+}
+
+// shorthandMetadata is the `metadata: {labels, annotations}` block accepted
+// at both the local (pod) and remote (rule) level. Remote wins over local on
+// key conflicts; generated labels/annotations win over both.
+type shorthandMetadata struct {
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// mergeShorthandMetadata mirrors bb-common's metadata-overrides helper:
+// remote keys override local ones.
+func mergeShorthandMetadata(local, remote *shorthandMetadata) *shorthandMetadata {
+	if local == nil && remote == nil {
+		return nil
+	}
+	out := &shorthandMetadata{}
+	if local != nil {
+		out.Labels = mergeMaps(out.Labels, local.Labels)
+		out.Annotations = mergeMaps(out.Annotations, local.Annotations)
+	}
+	if remote != nil {
+		out.Labels = mergeMaps(out.Labels, remote.Labels)
+		out.Annotations = mergeMaps(out.Annotations, remote.Annotations)
+	}
+	return out
+}
+
+// applyShorthandMetadata folds user-supplied labels/annotations into an
+// object's metadata. Generated keys take precedence, matching bb-common
+// (where `merge $netpol $userMetadata` keeps the netpol's own keys).
+func applyShorthandMetadata(obj metav1.Object, meta *shorthandMetadata) {
+	if meta == nil {
+		return
+	}
+	if len(meta.Labels) > 0 {
+		obj.SetLabels(mergeMaps(meta.Labels, obj.GetLabels()))
+	}
+	if len(meta.Annotations) > 0 {
+		obj.SetAnnotations(mergeMaps(meta.Annotations, obj.GetAnnotations()))
+	}
 }
 
 type shorthandPeer struct {
 	K8s        map[string]shorthandTarget `json:"k8s,omitempty"`
 	Definition map[string]shorthandTarget `json:"definition,omitempty"`
 	Cidr       map[string]shorthandTarget `json:"cidr,omitempty"`
-	// Literal generator (raw spec passthrough under `to`/`from`) is
-	// deferred — additionalPolicies[] covers the same need.
+	Literal    map[string]literalTarget   `json:"literal,omitempty"`
+}
+
+// literalTarget is one `to.literal.<key>` / `from.literal.<key>` entry: a
+// raw egress/ingress rule array emitted as-is, mirroring bb-common's
+// from-spec-literal generator. Note literal rules bypass excludeCIDRs.
+type literalTarget struct {
+	Enabled  bool               `json:"-"`
+	Metadata *shorthandMetadata `json:"-"`
+	Spec     json.RawMessage    `json:"-"`
+}
+
+func (t *literalTarget) UnmarshalJSON(b []byte) error {
+	if len(b) == 4 && string(b) == "true" {
+		t.Enabled = true
+		return nil
+	}
+	if len(b) == 5 && string(b) == "false" {
+		t.Enabled = false
+		return nil
+	}
+	var raw struct {
+		Enabled  *bool              `json:"enabled,omitempty"`
+		Metadata *shorthandMetadata `json:"metadata,omitempty"`
+		Spec     json.RawMessage    `json:"spec,omitempty"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	t.Enabled = raw.Enabled == nil || *raw.Enabled
+	t.Metadata = raw.Metadata
+	t.Spec = raw.Spec
+	return nil
 }
 
 // shorthandTarget accepts either a bool (the common "true" form) or an
 // object with `enabled` and selector overrides. Custom unmarshaler handles
 // both.
 type shorthandTarget struct {
-	Enabled           bool              `json:"enabled,omitempty"`
-	PodSelector       map[string]string `json:"-"`
-	NamespaceSelector map[string]string `json:"-"`
+	Enabled           bool               `json:"enabled,omitempty"`
+	PodSelector       map[string]string  `json:"-"`
+	NamespaceSelector map[string]string  `json:"-"`
+	Metadata          *shorthandMetadata `json:"-"`
 }
 
 func (t *shorthandTarget) UnmarshalJSON(b []byte) error {
@@ -130,6 +208,7 @@ func (t *shorthandTarget) UnmarshalJSON(b []byte) error {
 		Enabled           *bool                  `json:"enabled,omitempty"`
 		PodSelector       map[string]interface{} `json:"podSelector,omitempty"`
 		NamespaceSelector map[string]interface{} `json:"namespaceSelector,omitempty"`
+		Metadata          *shorthandMetadata     `json:"metadata,omitempty"`
 	}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
@@ -137,6 +216,7 @@ func (t *shorthandTarget) UnmarshalJSON(b []byte) error {
 	t.Enabled = raw.Enabled == nil || *raw.Enabled
 	t.PodSelector = flattenMatchLabels(raw.PodSelector)
 	t.NamespaceSelector = flattenMatchLabels(raw.NamespaceSelector)
+	t.Metadata = raw.Metadata
 	return nil
 }
 
@@ -163,7 +243,7 @@ func flattenMatchLabels(m map[string]interface{}) map[string]string {
 	return out
 }
 
-func expandShorthandEgress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies) ([]client.Object, error) {
+func expandShorthandEgress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies, kubeAPIPorts []intstr.IntOrString) ([]client.Object, error) {
 	prepend := spec.PrependReleaseName
 	npLabels := defaultNetpolLabels("egress")
 	var out []client.Object
@@ -185,21 +265,25 @@ func expandShorthandEgress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPoli
 				return nil, fmt.Errorf("networkPolicies.egress.from.%s.to.k8s: %w", localKey, err)
 			}
 			np := buildShorthandEgressNetpol(pkg, prepend, npLabels, localKey, local, remoteKey, remote, target)
+			applyShorthandMetadata(np, mergeShorthandMetadata(local.Metadata, target.Metadata))
 			out = append(out, np)
 		}
 		for _, defName := range sortedKeys(local.To.Definition) {
-			if !local.To.Definition[defName].Enabled {
+			target := local.To.Definition[defName]
+			if !target.Enabled {
 				continue
 			}
-			def, err := resolveEgressDefinition(spec, defName)
+			def, err := resolveEgressDefinition(spec, defName, kubeAPIPorts)
 			if err != nil {
 				return nil, fmt.Errorf("networkPolicies.egress.from.%s.to.definition: %w", localKey, err)
 			}
 			np := buildEgressDefinitionNetpol(pkg, prepend, npLabels, localKey, local, defName, def)
+			applyShorthandMetadata(np, mergeShorthandMetadata(local.Metadata, target.Metadata))
 			out = append(out, np)
 		}
 		for _, cidrKey := range sortedKeys(local.To.Cidr) {
-			if !local.To.Cidr[cidrKey].Enabled {
+			target := local.To.Cidr[cidrKey]
+			if !target.Enabled {
 				continue
 			}
 			cidr, err := parseEgressCIDRKey(cidrKey)
@@ -207,6 +291,19 @@ func expandShorthandEgress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPoli
 				return nil, fmt.Errorf("networkPolicies.egress.from.%s.to.cidr: %w", localKey, err)
 			}
 			np := buildEgressCIDRNetpol(pkg, spec, prepend, npLabels, localKey, local, cidrKey, cidr)
+			applyShorthandMetadata(np, mergeShorthandMetadata(local.Metadata, target.Metadata))
+			out = append(out, np)
+		}
+		for _, ruleKey := range sortedKeys(local.To.Literal) {
+			lit := local.To.Literal[ruleKey]
+			if !lit.Enabled {
+				continue
+			}
+			np, err := buildEgressLiteralNetpol(pkg, prepend, npLabels, localKey, local, ruleKey, lit)
+			if err != nil {
+				return nil, fmt.Errorf("networkPolicies.egress.from.%s.to.literal: %w", localKey, err)
+			}
+			applyShorthandMetadata(np, mergeShorthandMetadata(local.Metadata, lit.Metadata))
 			out = append(out, np)
 		}
 	}
@@ -239,10 +336,12 @@ func expandShorthandIngress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPol
 				return nil, fmt.Errorf("networkPolicies.ingress.to.%s.from.k8s: %w", localKey, err)
 			}
 			np := buildShorthandIngressNetpol(pkg, prepend, npLabels, parsedLocal, local, remoteKey, remote, target)
+			applyShorthandMetadata(np, mergeShorthandMetadata(local.Metadata, target.Metadata))
 			out = append(out, np)
 		}
 		for _, defName := range sortedKeys(local.From.Definition) {
-			if !local.From.Definition[defName].Enabled {
+			target := local.From.Definition[defName]
+			if !target.Enabled {
 				continue
 			}
 			def, err := resolveIngressDefinition(spec, defName)
@@ -250,10 +349,12 @@ func expandShorthandIngress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPol
 				return nil, fmt.Errorf("networkPolicies.ingress.to.%s.from.definition: %w", localKey, err)
 			}
 			np := buildIngressDefinitionNetpol(pkg, prepend, npLabels, parsedLocal, local, defName, def)
+			applyShorthandMetadata(np, mergeShorthandMetadata(local.Metadata, target.Metadata))
 			out = append(out, np)
 		}
 		for _, cidrKey := range sortedKeys(local.From.Cidr) {
-			if !local.From.Cidr[cidrKey].Enabled {
+			target := local.From.Cidr[cidrKey]
+			if !target.Enabled {
 				continue
 			}
 			cidr, err := parseIngressCIDRKey(cidrKey)
@@ -261,6 +362,19 @@ func expandShorthandIngress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPol
 				return nil, fmt.Errorf("networkPolicies.ingress.to.%s.from.cidr: %w", localKey, err)
 			}
 			np := buildIngressCIDRNetpol(pkg, prepend, npLabels, parsedLocal, local, cidrKey, cidr)
+			applyShorthandMetadata(np, mergeShorthandMetadata(local.Metadata, target.Metadata))
+			out = append(out, np)
+		}
+		for _, ruleKey := range sortedKeys(local.From.Literal) {
+			lit := local.From.Literal[ruleKey]
+			if !lit.Enabled {
+				continue
+			}
+			np, err := buildIngressLiteralNetpol(pkg, prepend, npLabels, parsedLocal, local, ruleKey, lit)
+			if err != nil {
+				return nil, fmt.Errorf("networkPolicies.ingress.to.%s.from.literal: %w", localKey, err)
+			}
+			applyShorthandMetadata(np, mergeShorthandMetadata(local.Metadata, lit.Metadata))
 			out = append(out, np)
 		}
 	}
@@ -470,6 +584,117 @@ func buildIngressCIDRNetpol(pkg *bbv1alpha1.Package, prepend bool, npLabels map[
 			}},
 		},
 	}
+}
+
+// literalRuleKeyRe rejects keys that look like shorthand (contain `/`,
+// `:`, `@`, ...) — a literal rule key is a plain name, per bb-common's
+// from-spec-literal generator.
+var literalRuleKeyRe = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
+
+// buildEgressLiteralNetpol emits the NetworkPolicy generated by
+// `egress.from.<localKey>.to.literal.<ruleKey>`: the rule value's `spec`
+// becomes the policy's egress rules verbatim (no excludeCIDRs, no port
+// parsing), mirroring bb-common's from-spec-literal generator.
+func buildEgressLiteralNetpol(pkg *bbv1alpha1.Package, prepend bool, npLabels map[string]string, localKey string, local shorthandSource, ruleKey string, lit literalTarget) (*networkingv1.NetworkPolicy, error) {
+	if !literalRuleKeyRe.MatchString(ruleKey) {
+		return nil, fmt.Errorf("rule key %q cannot combine shorthand syntax with a spec value", ruleKey)
+	}
+	rules, specYAML, err := decodeLiteralRules[networkingv1.NetworkPolicyEgressRule](lit.Spec)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", ruleKey, err)
+	}
+
+	srcSelector := metav1.LabelSelector{}
+	if localKey != "*" {
+		srcSelector.MatchLabels = map[string]string{"app.kubernetes.io/name": localKey}
+	}
+	if len(local.PodSelector) > 0 {
+		srcSelector = metav1.LabelSelector{MatchLabels: local.PodSelector}
+	}
+
+	localName := localKey
+	if localName == "*" {
+		localName = nameAnyPod
+	}
+	name := fmt.Sprintf("allow-egress-from-%s-to-%s", localName, strings.ToLower(ruleKey))
+	name = prependName(prepend, pkg.Name, name)
+
+	return &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   name,
+			Labels: cloneLabels(npLabels),
+			Annotations: map[string]string{
+				"generated.network-policies.bigbang.dev/local-key":         localKey,
+				"generated.network-policies.bigbang.dev/remote-key":        ruleKey,
+				"generated.network-policies.bigbang.dev/from-spec-literal": specYAML,
+			},
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: srcSelector,
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
+			Egress:      rules,
+		},
+	}, nil
+}
+
+// buildIngressLiteralNetpol is the ingress counterpart of
+// buildEgressLiteralNetpol. Ports from the local ingress key are ignored —
+// the literal spec is authoritative.
+func buildIngressLiteralNetpol(pkg *bbv1alpha1.Package, prepend bool, npLabels map[string]string, parsedLocal *parsedLocalIngressKey, local shorthandSource, ruleKey string, lit literalTarget) (*networkingv1.NetworkPolicy, error) {
+	if !literalRuleKeyRe.MatchString(ruleKey) {
+		return nil, fmt.Errorf("rule key %q cannot combine shorthand syntax with a spec value", ruleKey)
+	}
+	rules, specYAML, err := decodeLiteralRules[networkingv1.NetworkPolicyIngressRule](lit.Spec)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", ruleKey, err)
+	}
+
+	dstSelector := metav1.LabelSelector{MatchLabels: map[string]string{"app.kubernetes.io/name": parsedLocal.Pod}}
+	if len(local.PodSelector) > 0 {
+		dstSelector = metav1.LabelSelector{MatchLabels: local.PodSelector}
+	}
+
+	name := fmt.Sprintf("allow-ingress-to-%s", parsedLocal.Pod)
+	if parsedLocal.Protocol != "" && parsedLocal.Protocol != protoTCP {
+		name += "-" + strings.ToLower(parsedLocal.Protocol)
+	}
+	name += "-from-" + strings.ToLower(ruleKey)
+	name = prependName(prepend, pkg.Name, name)
+
+	return &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   name,
+			Labels: cloneLabels(npLabels),
+			Annotations: map[string]string{
+				"generated.network-policies.bigbang.dev/local-key":         parsedLocal.Pod,
+				"generated.network-policies.bigbang.dev/remote-key":        ruleKey,
+				"generated.network-policies.bigbang.dev/from-spec-literal": specYAML,
+			},
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: dstSelector,
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress:     rules,
+		},
+	}, nil
+}
+
+// decodeLiteralRules unmarshals a literal rule's raw `spec` array into typed
+// rules and returns the YAML rendering stamped into the from-spec-literal
+// annotation (bb-common records the spec as YAML there).
+func decodeLiteralRules[T any](raw json.RawMessage) ([]T, string, error) {
+	if len(raw) == 0 {
+		return nil, "", fmt.Errorf("literal rule has no spec")
+	}
+	var rules []T
+	if err := json.Unmarshal(raw, &rules); err != nil {
+		return nil, "", fmt.Errorf("spec must be a rule array: %w", err)
+	}
+	specYAML, err := yaml.JSONToYAML(raw)
+	if err != nil {
+		return nil, "", err
+	}
+	return rules, strings.TrimRight(string(specYAML), "\n") + "\n", nil
 }
 
 // excludeCIDRsFor returns the configured exclusion list, falling back to

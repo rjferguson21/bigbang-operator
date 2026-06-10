@@ -1,0 +1,171 @@
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+  name: default-peer-auth
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  mtls:
+    mode: STRICT
+status: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    generated.network-policies.bigbang.dev/local-key: example-app
+    generated.network-policies.bigbang.dev/remote-key: backend/api:8080
+    note: local-level
+    rule: remote-level
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: egress
+    network-policies.bigbang.dev/source: bigbang-operator
+    team: backend
+  name: allow-egress-from-example-app-to-ns-backend-pod-api-tcp-port-8080
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  egress:
+  - ports:
+    - port: 8080
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: backend
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: api
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+  policyTypes:
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    generated.network-policies.bigbang.dev/local-key: example-app
+    generated.network-policies.bigbang.dev/remote-key: 10.0.0.0/8:443
+    note: local-level
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: egress
+    network-policies.bigbang.dev/source: bigbang-operator
+    team: bigbang
+  name: allow-egress-from-example-app-to-cidr-10-0-0-0-8-tcp-port-443
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  egress:
+  - ports:
+    - port: 443
+      protocol: TCP
+    to:
+    - ipBlock:
+        cidr: 10.0.0.0/8
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+  policyTypes:
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    generated.network-policies.bigbang.dev/local-key: example-app
+    generated.network-policies.bigbang.dev/remote-key: frontend/web
+    rule: web-ingress
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    network-policies.bigbang.dev/direction: ingress
+    network-policies.bigbang.dev/source: bigbang-operator
+    team: bigbang
+  name: allow-ingress-to-example-app-tcp-port-8080-from-ns-frontend-pod-web
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: frontend
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: web
+    ports:
+    - port: 8080
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+  policyTypes:
+  - Ingress
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  annotations:
+    generated.authorization-policies.bigbang.dev/from-namespace: frontend/web
+    generated.authorization-policies.bigbang.dev/pod: web
+    rule: web-ingress
+  labels:
+    app.kubernetes.io/managed-by: bigbang-operator
+    bigbang.dev/package: example-app
+    team: bigbang
+  name: allow-ingress-to-example-app-tcp-port-8080-from-ns-frontend
+  namespace: example-app
+  ownerReferences:
+  - apiVersion: bigbang.dev/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Package
+    name: example-app
+    uid: 11111111-1111-1111-1111-111111111111
+spec:
+  rules:
+  - from:
+    - source:
+        namespaces:
+        - frontend
+    to:
+    - operation:
+        ports:
+        - "8080"
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: example-app
+status: {}
