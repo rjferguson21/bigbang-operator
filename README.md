@@ -13,15 +13,17 @@ For a `Package` with all features on, the operator produces:
 - **Istio**: `PeerAuthentication`, `Sidecar`, default `AuthorizationPolicy`
   resources, plus generated APs from NetworkPolicy shorthand and per-route
   APs that pin gateway-to-workload traffic to the gateway's ServiceAccount.
-- **NetworkPolicies**: 7 baseline policies (deny-all, allow-in-ns,
-  kube-DNS, istiod, prometheus-to-sidecar, ambient-kubelet, allow-all-in-ns)
-  plus shorthand K8s/CIDR/definition rules with HBONE port-15008 injection
-  under ambient mode.
+- **NetworkPolicies**: 8 baseline policies (deny-all and allow-in-ns in
+  both directions, kube-DNS, istiod, prometheus-to-sidecar, ambient-kubelet)
+  plus shorthand K8s/CIDR/definition/literal rules with HBONE port-15008
+  injection under ambient mode.
 - **Routes**: `VirtualService` + `ServiceEntry` per inbound, gateway-permitting
   `NetworkPolicy`, TLS passthrough mode, advanced HTTP rules
   (match/rewrite/retries/fault), and outbound `ServiceEntry`.
 
-See `plan/` for the design docs and `TODOS.md` for the in-flight roadmap.
+See [`docs/`](docs/README.md) for user guides (network policies, routes,
+authorization policies, controller behavior, bb-common migration), `plan/`
+for the design docs, and `TODOS.md` for the in-flight roadmap.
 
 ## Install
 
@@ -52,15 +54,58 @@ helm install bigbang-operator \
   --set image.repository=registry1.dso.mil/ironbank/big-bang/bigbang-operator
 ```
 
-## Try it
+## Quickstart
 
-Apply a sample `Package`:
+Create a namespace and apply a minimal `Package`:
 
 ```sh
-kubectl apply -f config/samples/bigbang_v1alpha1_package.yaml
-kubectl get packages -A          # READY / REASON / AGE columns
-kubectl -n example-app get peerauthentication,networkpolicy,virtualservice,serviceentry,authorizationpolicy
+kubectl create namespace my-app
+kubectl apply -f - <<'EOF'
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: my-app
+  namespace: my-app
+spec:
+  istio:
+    enabled: true
+  networkPolicies:
+    enabled: true
+    ingress:
+      to:
+        my-app:8080:
+          from:
+            definition:
+              gateway: true
+EOF
 ```
+
+This emits STRICT-mTLS `PeerAuthentication`, the baseline deny-all
+NetworkPolicies with targeted allows (in-namespace, kube-DNS, istiod,
+prometheus), and one generated policy admitting the Istio ingress gateway
+to `my-app` pods on port 8080:
+
+```sh
+$ kubectl get packages -n my-app
+NAME     READY   REASON             AGE
+my-app   True    ResourcesApplied   5s
+
+$ kubectl -n my-app get networkpolicy,peerauthentication
+NAME      ...
+networkpolicy.networking.k8s.io/allow-ingress-to-my-app-tcp-port-8080-from-gateway
+networkpolicy.networking.k8s.io/default-egress-allow-all-in-ns
+networkpolicy.networking.k8s.io/default-egress-allow-istiod
+networkpolicy.networking.k8s.io/default-egress-allow-kube-dns
+networkpolicy.networking.k8s.io/default-egress-deny-all
+networkpolicy.networking.k8s.io/default-ingress-allow-all-in-ns
+networkpolicy.networking.k8s.io/default-ingress-allow-prometheus-to-istio-sidecar
+networkpolicy.networking.k8s.io/default-ingress-deny-all
+peerauthentication.security.istio.io/default-peer-auth
+```
+
+Edit the spec and the resources follow; delete the `Package` and they're
+garbage-collected. See [`docs/`](docs/README.md) for the full API —
+egress/ingress shorthand, definitions, routes, and ambient mode.
 
 More samples under `config/samples/`. The `test/e2e/podinfo_smoke.sh`
 script deploys the upstream podinfo chart and a `Package` shaped after
@@ -88,4 +133,4 @@ Tests: `make test` runs the generator goldens + the envtest reconciler suite.
 
 ## License
 
-Apache 2.0 — see `LICENSE` headers.
+Apache 2.0 — see [`LICENSE`](LICENSE).

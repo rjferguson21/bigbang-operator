@@ -3,7 +3,6 @@ package generator
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 
 	istionetv1alpha3 "istio.io/api/networking/v1alpha3"
@@ -131,17 +130,6 @@ func decodeOutbound(j any) (*bbv1alpha1.OutboundRoute, error) {
 		return nil, err
 	}
 	return &r, nil
-}
-
-// sortedKeys lets the generator emit resources in deterministic order so
-// goldens compare cleanly across runs.
-func sortedKeys[M ~map[string]V, V any](m M) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 func buildVirtualService(pkg *bbv1alpha1.Package, prepend bool, name string, r *bbv1alpha1.InboundRoute) (client.Object, error) {
@@ -380,18 +368,4 @@ func serviceLeaf(s string) string {
 		return s[:i]
 	}
 	return s
-}
-
-func mergeMaps(a, b map[string]string) map[string]string {
-	if len(a) == 0 && len(b) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(a)+len(b))
-	for k, v := range a {
-		out[k] = v
-	}
-	for k, v := range b {
-		out[k] = v
-	}
-	return out
 }

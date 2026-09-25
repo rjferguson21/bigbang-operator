@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	istiosecv1beta1 "istio.io/api/security/v1beta1"
 	istiotypev1beta1 "istio.io/api/type/v1beta1"
@@ -180,10 +181,10 @@ func buildAuthzFromCIDR(pkg *bbv1alpha1.Package, prepend bool, local *parsedLoca
 	// Reuse the NP naming scheme (kept in sync with buildIngressCIDRNetpol).
 	name := fmt.Sprintf("allow-ingress-to-%s", local.Pod)
 	if local.Protocol != "" && local.Protocol != protoTCP {
-		name += "-" + lowercase(local.Protocol)
+		name += "-" + strings.ToLower(local.Protocol)
 	}
 	if len(local.Ports) > 0 {
-		name += "-" + lowercase(local.Protocol) + "-" + namePortSuffix(local.Ports, local.HasPortRange)
+		name += "-" + strings.ToLower(local.Protocol) + "-" + namePortSuffix(local.Ports, local.HasPortRange)
 	}
 	if cidr.CIDR == cidrAnywhere {
 		name += "-from-anywhere"
@@ -237,10 +238,10 @@ func buildAuthzFromShorthand(pkg *bbv1alpha1.Package, prepend bool, local *parse
 	// stripped, then "-from-ns-<ns>" or "-from-ns-<ns>-with-identity-<sa>".
 	netpolName := fmt.Sprintf("allow-ingress-to-%s", local.Pod)
 	if local.Protocol != "" && local.Protocol != protoTCP {
-		netpolName += "-" + lowercase(local.Protocol)
+		netpolName += "-" + strings.ToLower(local.Protocol)
 	}
 	if len(local.Ports) > 0 {
-		netpolName += "-" + lowercase(local.Protocol)
+		netpolName += "-" + strings.ToLower(local.Protocol)
 	}
 	netpolName += "-" + namePortSuffix(local.Ports, local.HasPortRange)
 
@@ -461,14 +462,4 @@ func buildAdditionalAuthzPolicy(name string, labels, annotations map[string]stri
 		return nil, err
 	}
 	return ap, nil
-}
-
-func lowercase(s string) string {
-	out := []byte(s)
-	for i, c := range out {
-		if c >= 'A' && c <= 'Z' {
-			out[i] = c + ('a' - 'A')
-		}
-	}
-	return string(out)
 }

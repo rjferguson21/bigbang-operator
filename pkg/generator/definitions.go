@@ -3,6 +3,7 @@ package generator
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -12,7 +13,7 @@ import (
 	bbv1alpha1 "bigbang.dev/operator/api/v1alpha1"
 )
 
-func ls(k, v string) *metav1.LabelSelector {
+func matchLabels(k, v string) *metav1.LabelSelector {
 	return &metav1.LabelSelector{MatchLabels: map[string]string{k: v}}
 }
 
@@ -58,14 +59,14 @@ func builtInIngressDefinitions() map[string]resolvedDefinition {
 	return map[string]resolvedDefinition{
 		"gateway": {
 			peers: []networkingv1.NetworkPolicyPeer{{
-				NamespaceSelector: ls("kubernetes.io/metadata.name", "istio-gateway"),
-				PodSelector:       ls("istio", "ingressgateway"),
+				NamespaceSelector: matchLabels("kubernetes.io/metadata.name", "istio-gateway"),
+				PodSelector:       matchLabels("istio", "ingressgateway"),
 			}},
 		},
 		"monitoring": {
 			peers: []networkingv1.NetworkPolicyPeer{{
-				NamespaceSelector: ls("kubernetes.io/metadata.name", "monitoring"),
-				PodSelector:       ls("app.kubernetes.io/name", "prometheus"),
+				NamespaceSelector: matchLabels("kubernetes.io/metadata.name", "monitoring"),
+				PodSelector:       matchLabels("app.kubernetes.io/name", "prometheus"),
 			}},
 		},
 	}
@@ -178,7 +179,7 @@ func buildEgressDefinitionNetpol(pkg *bbv1alpha1.Package, prepend bool, npLabels
 	if localName == "*" {
 		localName = nameAnyPod
 	}
-	name := prependName(prepend, pkg.Name, fmt.Sprintf("allow-egress-from-%s-to-%s", localName, lowercase(defName)))
+	name := prependName(prepend, pkg.Name, fmt.Sprintf("allow-egress-from-%s-to-%s", localName, strings.ToLower(defName)))
 
 	return &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
@@ -216,12 +217,12 @@ func buildIngressDefinitionNetpol(pkg *bbv1alpha1.Package, prepend bool, npLabel
 
 	name := fmt.Sprintf("allow-ingress-to-%s", parsedLocal.Pod)
 	if parsedLocal.Protocol != "" && parsedLocal.Protocol != protoTCP {
-		name += "-" + lowercase(parsedLocal.Protocol)
+		name += "-" + strings.ToLower(parsedLocal.Protocol)
 	}
 	if len(parsedLocal.Ports) > 0 {
-		name += "-" + lowercase(parsedLocal.Protocol) + "-" + namePortSuffix(parsedLocal.Ports, parsedLocal.HasPortRange)
+		name += "-" + strings.ToLower(parsedLocal.Protocol) + "-" + namePortSuffix(parsedLocal.Ports, parsedLocal.HasPortRange)
 	}
-	name = prependName(prepend, pkg.Name, name+"-from-"+lowercase(defName))
+	name = prependName(prepend, pkg.Name, name+"-from-"+strings.ToLower(defName))
 
 	return &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{

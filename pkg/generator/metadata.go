@@ -64,4 +64,26 @@ func stampMetadata(pkg *bbv1alpha1.Package, obj client.Object) {
 	obj.SetOwnerReferences(refs)
 }
 
-func ptr[T any](v T) *T { return &v }
+// mergeMaps copies a then b into a fresh map (b wins on conflicts); nil
+// when both inputs are empty so empty metadata stays omitted in output.
+func mergeMaps(a, b map[string]string) map[string]string {
+	if len(a) == 0 && len(b) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(a)+len(b))
+	for k, v := range a {
+		out[k] = v
+	}
+	for k, v := range b {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneLabels(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}

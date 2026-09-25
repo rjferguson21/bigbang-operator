@@ -7,7 +7,6 @@ import (
 
 	istionetv1alpha3 "istio.io/api/networking/v1alpha3"
 	istiosecv1beta1 "istio.io/api/security/v1beta1"
-	istiotypev1beta1 "istio.io/api/type/v1beta1"
 	istionetv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istiosecv1 "istio.io/client-go/pkg/apis/security/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -122,16 +121,3 @@ func mTLSMode(spec *bbv1alpha1.Istio) istiosecv1beta1.PeerAuthentication_MutualT
 		return istiosecv1beta1.PeerAuthentication_MutualTLS_STRICT
 	}
 }
-
-// prependName mirrors bb-common's `prependReleaseName` behavior: when true,
-// emitted names get the package name prefixed (e.g. "myapp-default-peer-auth").
-func prependName(prepend bool, releaseName, name string) string {
-	if !prepend {
-		return name
-	}
-	return releaseName + "-" + name
-}
-
-// (Unused import guard to keep the istio type imported even if codepaths
-// elsewhere later reference it through other identifiers.)
-var _ = istiotypev1beta1.WorkloadSelector{}
