@@ -21,6 +21,12 @@ import (
 	bbv1alpha1 "bigbang.dev/operator/api/v1alpha1"
 )
 
+const (
+	condReady       = "Ready"
+	condStalled     = "Stalled"
+	condReconciling = "Reconciling"
+)
+
 func rawJSON(s string) apiextensionsv1.JSON {
 	return apiextensionsv1.JSON{Raw: []byte(s)}
 }
@@ -78,9 +84,9 @@ func TestReconcile_DefaultsApplied(t *testing.T) {
 		ready := false
 		for _, c := range got.Status.Conditions {
 			switch c.Type {
-			case "Ready":
+			case condReady:
 				ready = c.Status == metav1.ConditionTrue
-			case "Stalled", "Reconciling":
+			case condStalled, condReconciling:
 				// kstatus abnormal-true conditions must be absent when healthy.
 				return fmt.Errorf("%s condition present on healthy Package", c.Type)
 			}
@@ -123,10 +129,10 @@ func TestReconcile_StalledOnFailure(t *testing.T) {
 		}
 		var stalled, notReady bool
 		for _, c := range got.Status.Conditions {
-			if c.Type == "Stalled" && c.Status == metav1.ConditionTrue && c.Reason == "GenerationFailed" {
+			if c.Type == condStalled && c.Status == metav1.ConditionTrue && c.Reason == "GenerationFailed" {
 				stalled = true
 			}
-			if c.Type == "Ready" && c.Status == metav1.ConditionFalse {
+			if c.Type == condReady && c.Status == metav1.ConditionFalse {
 				notReady = true
 			}
 		}
@@ -152,9 +158,9 @@ func TestReconcile_StalledOnFailure(t *testing.T) {
 		ready := false
 		for _, c := range got.Status.Conditions {
 			switch c.Type {
-			case "Ready":
+			case condReady:
 				ready = c.Status == metav1.ConditionTrue
-			case "Stalled", "Reconciling":
+			case condStalled, condReconciling:
 				return fmt.Errorf("%s condition still present after recovery", c.Type)
 			}
 		}
