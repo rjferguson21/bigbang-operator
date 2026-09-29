@@ -605,6 +605,8 @@ spec:
                 description: |-
                   conditions tracks reconciliation state. The Ready condition is set
                   True when desired resources are applied and pruned, False otherwise.
+                  Reconciling and Stalled follow the kstatus conventions: present and
+                  True while a new generation is being processed or after a failure.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -666,7 +668,7 @@ spec:
               observedGeneration:
                 description: |-
                   observedGeneration is the .metadata.generation the reconciler last
-                  successfully applied.
+                  processed, whether or not it applied successfully.
                 format: int64
                 type: integer
             type: object

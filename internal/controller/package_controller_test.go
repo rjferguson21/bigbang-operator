@@ -75,12 +75,93 @@ func TestReconcile_DefaultsApplied(t *testing.T) {
 		if got.Status.ObservedGeneration != got.Generation {
 			return fmt.Errorf("observedGeneration %d != generation %d", got.Status.ObservedGeneration, got.Generation)
 		}
+		ready := false
 		for _, c := range got.Status.Conditions {
-			if c.Type == "Ready" && c.Status == metav1.ConditionTrue {
-				return nil
+			switch c.Type {
+			case "Ready":
+				ready = c.Status == metav1.ConditionTrue
+			case "Stalled", "Reconciling":
+				// kstatus abnormal-true conditions must be absent when healthy.
+				return fmt.Errorf("%s condition present on healthy Package", c.Type)
 			}
 		}
-		return fmt.Errorf("Ready=True condition not found")
+		if !ready {
+			return fmt.Errorf("Ready=True condition not found")
+		}
+		return nil
+	})
+}
+
+// TestReconcile_StalledOnFailure drives a generation failure (unknown egress
+// definition) and asserts the kstatus contract: Stalled=True, Ready=False,
+// observedGeneration stamped even though the apply never happened. Fixing
+// the spec must clear Stalled and land Ready=True.
+func TestReconcile_StalledOnFailure(t *testing.T) {
+	te := startEnv(t)
+	te.ensureNamespace(t, "rec-stalled")
+	ctx := context.Background()
+
+	pkg := newPackage("example-app", "rec-stalled", func(p *bbv1alpha1.Package) {
+		p.Spec.NetworkPolicies = &bbv1alpha1.NetworkPolicies{
+			Enabled: true,
+			Egress: &bbv1alpha1.NetworkPoliciesEgress{
+				From: map[string]apiextensionsv1.JSON{
+					"example-app": rawJSON(`{"to":{"definition":{"noSuchDefinition":true}}}`),
+				},
+			},
+		}
+	})
+	mustCreate(t, te.k8s, pkg)
+
+	waitFor(t, func() error {
+		var got bbv1alpha1.Package
+		if err := te.k8s.Get(ctx, types.NamespacedName{Namespace: "rec-stalled", Name: "example-app"}, &got); err != nil {
+			return err
+		}
+		if got.Status.ObservedGeneration != got.Generation {
+			return fmt.Errorf("observedGeneration %d != generation %d", got.Status.ObservedGeneration, got.Generation)
+		}
+		var stalled, notReady bool
+		for _, c := range got.Status.Conditions {
+			if c.Type == "Stalled" && c.Status == metav1.ConditionTrue && c.Reason == "GenerationFailed" {
+				stalled = true
+			}
+			if c.Type == "Ready" && c.Status == metav1.ConditionFalse {
+				notReady = true
+			}
+		}
+		if !stalled || !notReady {
+			return fmt.Errorf("want Stalled=True and Ready=False, got %+v", got.Status.Conditions)
+		}
+		return nil
+	})
+
+	// Fix the spec: Stalled must clear and Ready flip to True.
+	mustUpdate(t, te.k8s, "rec-stalled", "example-app", func(p *bbv1alpha1.Package) {
+		p.Spec.NetworkPolicies.Egress = nil
+	})
+
+	waitFor(t, func() error {
+		var got bbv1alpha1.Package
+		if err := te.k8s.Get(ctx, types.NamespacedName{Namespace: "rec-stalled", Name: "example-app"}, &got); err != nil {
+			return err
+		}
+		if got.Status.ObservedGeneration != got.Generation {
+			return fmt.Errorf("observedGeneration %d != generation %d", got.Status.ObservedGeneration, got.Generation)
+		}
+		ready := false
+		for _, c := range got.Status.Conditions {
+			switch c.Type {
+			case "Ready":
+				ready = c.Status == metav1.ConditionTrue
+			case "Stalled", "Reconciling":
+				return fmt.Errorf("%s condition still present after recovery", c.Type)
+			}
+		}
+		if !ready {
+			return fmt.Errorf("Ready=True condition not found after recovery")
+		}
+		return nil
 	})
 }
 

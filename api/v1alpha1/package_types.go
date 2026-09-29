@@ -48,12 +48,14 @@ type PackageSpec struct {
 // PackageStatus defines the observed state of Package.
 type PackageStatus struct {
 	// observedGeneration is the .metadata.generation the reconciler last
-	// successfully applied.
+	// processed, whether or not it applied successfully.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// conditions tracks reconciliation state. The Ready condition is set
 	// True when desired resources are applied and pruned, False otherwise.
+	// Reconciling and Stalled follow the kstatus conventions: present and
+	// True while a new generation is being processed or after a failure.
 	// +listType=map
 	// +listMapKey=type
 	// +optional

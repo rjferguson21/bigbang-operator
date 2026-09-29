@@ -76,6 +76,12 @@ func (r *PackageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 	}
 
+	if pkg.Generation != pkg.Status.ObservedGeneration {
+		if err := r.markReconciling(ctx, &pkg); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	start := time.Now()
 	defer func() {
 		reconcileDurationSeconds.WithLabelValues(pkg.Namespace, pkg.Name).Observe(time.Since(start).Seconds())
