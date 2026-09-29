@@ -6,7 +6,8 @@ name: Release
 # - push to main           -> image tags: main, sha-<short>
 # - push tag like v0.1.0   -> image tags: 0.1.0, 0.1, 0, latest
 #                             chart published as oci://ghcr.io/.../charts/bigbang-operator:0.1.0
-# - manual dispatch        -> image tags: main, sha-<short>
+# - manual dispatch        -> tags per the ref it runs on (tag.yml dispatches
+#                             at v* tags it creates from chart/Chart.yaml bumps)
 
 on:
   push:

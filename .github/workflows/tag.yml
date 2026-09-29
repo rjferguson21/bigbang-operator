@@ -1,0 +1,41 @@
+name: Auto Tag
+
+# Tag releases from chart/Chart.yaml: when a version bump lands on main,
+# create the matching v<version> tag and dispatch the Release workflow at
+# that tag. The explicit dispatch is required because tags pushed with
+# GITHUB_TOKEN do not fire the Release workflow's tag trigger.
+
+on:
+  push:
+    branches: [main]
+    paths: [chart/Chart.yaml]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag:
+    name: tag on version bump
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read chart version
+        id: version
+        run: echo "tag=v$(yq '.version' chart/Chart.yaml)" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and dispatch release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists, skipping"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          gh workflow run image.yml --ref "$TAG"
