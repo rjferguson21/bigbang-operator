@@ -33,7 +33,7 @@ helm chart to `oci://ghcr.io/rjferguson21/charts/bigbang-operator`.
 ```sh
 helm install bigbang-operator \
   oci://ghcr.io/rjferguson21/charts/bigbang-operator \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --namespace bigbang-operator --create-namespace
 ```
 
@@ -49,7 +49,7 @@ For Iron Bank-hardened deploys, override the image repo:
 ```sh
 helm install bigbang-operator \
   oci://ghcr.io/rjferguson21/charts/bigbang-operator \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --namespace bigbang-operator --create-namespace \
   --set image.repository=registry1.dso.mil/ironbank/big-bang/bigbang-operator
 ```

@@ -14,9 +14,27 @@ can't do.
 4. **Status** — `Ready` condition, `observedGeneration`, and an
    `appliedResources` summary land on the Package.
 
-A failure at any step short-circuits with `Ready=False` and a reason of
-`GenerationFailed`, `ApplyFailed`, or `PruneFailed` (the message carries the
-underlying error).
+A failure at any step short-circuits with `Ready=False`, `Stalled=True`, and
+a reason of `GenerationFailed`, `ApplyFailed`, or `PruneFailed` (the message
+carries the underlying error). `observedGeneration` is stamped either way —
+it means "this generation was processed", not "applied successfully".
+
+## Status conditions (kstatus)
+
+Package status follows the
+[kstatus conventions](https://github.com/kubernetes-sigs/cli-utils/tree/master/pkg/kstatus),
+so tooling built on it — `kubectl apply --wait` via cli-utils, Flux health
+checks, ArgoCD — computes the right phase:
+
+| State | Conditions | kstatus |
+|---|---|---|
+| New generation being processed | `Reconciling=True` | `InProgress` |
+| Reconcile failed | `Ready=False`, `Stalled=True` | `Failed` |
+| Reconciled | `Ready=True` only | `Current` |
+
+`Reconciling` and `Stalled` are abnormal-true: they're removed, not set
+False, when they don't apply. `kubectl wait --for=condition=Ready
+package/<name>` works as expected.
 
 ## Drift recovery
 
@@ -86,6 +104,6 @@ NAMESPACE     NAME         READY   REASON             AGE
 example-app   example-app  True    ResourcesApplied   5m
 broken-app    broken-app   False   GenerationFailed   1m
 
-$ kubectl -n broken-app get package broken-app -o jsonpath='{.status.conditions[0].message}'
+$ kubectl -n broken-app get package broken-app -o jsonpath='{.status.conditions[?(@.type=="Ready")].message}'
 routes.inbound.web: gateways[] must be non-empty when enabled
 ```
