@@ -190,10 +190,8 @@ func buildHTTPRoutes(r *bbv1alpha1.InboundRoute) ([]*istionetv1alpha3.HTTPRoute,
 		return out, nil
 	}
 	dest := &istionetv1alpha3.Destination{Host: r.Service}
-	if r.ContainerPort != nil {
-		dest.Port = &istionetv1alpha3.PortSelector{Number: portNumber(r.ContainerPort)}
-	} else if r.Port != nil {
-		dest.Port = &istionetv1alpha3.PortSelector{Number: portNumber(r.Port)}
+	if p := inboundWorkloadPort(r); p != nil {
+		dest.Port = &istionetv1alpha3.PortSelector{Number: portNumber(p)}
 	}
 	return []*istionetv1alpha3.HTTPRoute{{
 		Route: []*istionetv1alpha3.HTTPRouteDestination{{Destination: dest}},
@@ -238,6 +236,17 @@ func hasWildcardHost(hosts []string) bool {
 	return false
 }
 
+// inboundWorkloadPort is the port gateway traffic actually reaches the pod
+// on: containerPort when set, falling back to the service port. bb-common
+// uses the same precedence for the route's NetworkPolicy and VirtualService
+// destination.
+func inboundWorkloadPort(r *bbv1alpha1.InboundRoute) *intstr.IntOrString {
+	if r.ContainerPort != nil {
+		return r.ContainerPort
+	}
+	return r.Port
+}
+
 func buildInboundNetpols(pkg *bbv1alpha1.Package, prepend bool, _ string, r *bbv1alpha1.InboundRoute) []client.Object {
 	out := make([]client.Object, 0, len(r.Gateways))
 	for _, gw := range r.Gateways {
@@ -245,12 +254,12 @@ func buildInboundNetpols(pkg *bbv1alpha1.Package, prepend bool, _ string, r *bbv
 		if !ok {
 			continue
 		}
-		port := intstr.FromInt(int(portNumber(r.Port)))
+		port := intstr.FromInt(int(portNumber(inboundWorkloadPort(r))))
 		tcp := corev1.ProtocolTCP
 		out = append(out, &networkingv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: prependName(prepend, pkg.Name, fmt.Sprintf("allow-ingress-to-%s-%d-from-ns-%s-pod-%s",
-					serviceLeaf(r.Service), portNumber(r.Port), gwNS, gwName)),
+					serviceLeaf(r.Service), portNumber(inboundWorkloadPort(r)), gwNS, gwName)),
 				Labels:      mergeMaps(r.Labels, map[string]string{LabelNetpolSource: LabelNetpolSourceValue, "network-policies.bigbang.dev/direction": "ingress"}),
 				Annotations: mergeMaps(r.Annotations, nil),
 			},

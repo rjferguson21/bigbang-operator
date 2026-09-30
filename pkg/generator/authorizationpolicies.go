@@ -345,7 +345,9 @@ func buildAuthzFromRoute(pkg *bbv1alpha1.Package, prepend bool, route *bbv1alpha
 			},
 		}},
 	}
-	if p := route.Port; p != nil {
+	// The AP is enforced at the workload sidecar, where gateway traffic
+	// arrives on the container port, not the service port.
+	if p := inboundWorkloadPort(route); p != nil {
 		if n := portNumber(p); n != 0 {
 			rule.To = []*istiosecv1beta1.Rule_To{{
 				Operation: &istiosecv1beta1.Operation{

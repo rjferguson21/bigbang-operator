@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explicit empty `namespaceSelector: {}` / `podSelector: {}` in network policy
   definitions were dropped, silently narrowing any-namespace rules to
   same-namespace-only (#1)
+- Inbound route NetworkPolicy/AuthorizationPolicy now allow the workload port
+  (`containerPort`, falling back to `port`) instead of the service port, so
+  routes like grafana's 80→3000 admit the traffic they declare (#2)
 
 ## [0.2.0] (2026-09-28)
 

@@ -1,0 +1,31 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: grafana
+  namespace: monitoring
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  istio:
+    enabled: true
+    authorizationPolicies:
+      enabled: true
+      defaults:
+        enabled: false
+      generateFromNetpol: false
+  networkPolicies:
+    enabled: true
+    defaults:
+      enabled: false
+  routes:
+    inbound:
+      grafana:
+        enabled: true
+        gateways:
+          - istio-gateway/public-ingressgateway
+        hosts:
+          - grafana.bigbang.mil
+        service: grafana
+        port: 80
+        containerPort: 3000
+        selector:
+          app.kubernetes.io/name: grafana
