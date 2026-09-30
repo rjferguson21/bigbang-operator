@@ -1,0 +1,39 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: example-app
+  namespace: example-app
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  networkPolicies:
+    enabled: true
+    egress:
+      defaults:
+        enabled: false
+      definitions:
+        # namespaceSelector: {} = this pod in ANY namespace
+        elasticsearch:
+          ports:
+            - port: 9200
+              protocol: TCP
+          to:
+            - namespaceSelector: {}
+              podSelector:
+                matchLabels:
+                  common.k8s.elastic.co/type: elasticsearch
+        # podSelector: {} = ALL pods in the selected namespace
+        logging-ns:
+          ports:
+            - port: 5601
+              protocol: TCP
+          to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: logging
+              podSelector: {}
+      from:
+        example-app:
+          to:
+            definition:
+              elasticsearch: true
+              logging-ns: true
