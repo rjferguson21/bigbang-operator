@@ -22,9 +22,11 @@ For a `Package` with all features on, the operator produces:
   `NetworkPolicy`, TLS passthrough mode, advanced HTTP rules
   (match/rewrite/retries/fault), and outbound `ServiceEntry`.
 
-See [`docs/`](docs/README.md) for user guides (network policies, routes,
-authorization policies, controller behavior, bb-common migration), `plan/`
-for the design docs, and `TODOS.md` for the in-flight roadmap.
+**Documentation: [rjferguson21.github.io/bigbang-operator](https://rjferguson21.github.io/bigbang-operator/)**
+(source under [`docs/`](docs/README.md)) — user guides for network policies,
+routes, authorization policies, global configuration, controller behavior,
+and bb-common migration. Design docs live in `plan/`, the in-flight roadmap
+in `TODOS.md`.
 
 ## Install
 
