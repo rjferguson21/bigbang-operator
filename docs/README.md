@@ -16,6 +16,7 @@ you already know the Package API.
 |---|---|
 | [network-policies.md](network-policies.md) | Default policies, egress/ingress shorthand (k8s, cidr, definition, literal), metadata overrides, `excludeCIDRs`, HBONE injection, raw passthrough |
 | [istio.md](istio.md) | PeerAuthentication, Sidecar, ambient mode side-effects, custom ServiceEntries |
+| [global-config.md](global-config.md) | Cluster-wide shared config: the global ConfigMap, shared egress/ingress definitions, precedence, change propagation |
 | [authorization-policies.md](authorization-policies.md) | Default APs, APs generated from NetworkPolicy shorthand, per-route gateway APs, custom APs |
 | [routes.md](routes.md) | Inbound routes (VirtualService, ServiceEntry, gateway netpol, gateway AP, TLS passthrough, advanced HTTP), outbound ServiceEntries |
 | [controller.md](controller.md) | Reconcile flow, server-side apply, pruning, drift recovery, status conditions, events, metrics, RBAC |
