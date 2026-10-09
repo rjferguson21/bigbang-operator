@@ -69,7 +69,7 @@ its lookup returns nothing.
 ## Global config watch
 
 Shared egress/ingress definitions live in the `bigbang-operator-global` ConfigMap
-(see [network-policies.md](network-policies.md#shared-definitions-global-configmap)).
+(see [global-config.md](global-config.md)).
 The controller watches that single object — the informer is field-selected
 to its name and namespace, so no cluster-wide ConfigMap cache — and any
 change re-enqueues every Package, so edits propagate to generated

@@ -40,6 +40,7 @@ nav:
       - Routes: routes.md
       - Authorization Policies: authorization-policies.md
       - Istio: istio.md
+      - Global Configuration: global-config.md
   - Reference:
       - Controller Behavior: controller.md
       - Migrating from bb-common: migrating-from-bb-common.md
