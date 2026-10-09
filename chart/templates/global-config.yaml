@@ -1,0 +1,18 @@
+{{- if .Values.globalConfig.create }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.globalConfig.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bigbang-operator.labels" . | nindent 4 }}
+data:
+  {{- with .Values.globalConfig.egressDefinitions }}
+  egressDefinitions: |
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.globalConfig.ingressDefinitions }}
+  ingressDefinitions: |
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

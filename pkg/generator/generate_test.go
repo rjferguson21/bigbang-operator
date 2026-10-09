@@ -35,6 +35,11 @@ func TestGenerate(t *testing.T) {
 	}
 
 	for _, in := range inputs {
+		// `<name>.global.yaml` files are shared-definition sidecars for
+		// `<name>.yaml`, not inputs of their own.
+		if strings.HasSuffix(in, ".global.yaml") {
+			continue
+		}
 		name := strings.TrimSuffix(filepath.Base(in), ".yaml")
 		t.Run(name, func(t *testing.T) {
 			pkgBytes, err := os.ReadFile(in)
@@ -46,7 +51,24 @@ func TestGenerate(t *testing.T) {
 				t.Fatalf("unmarshal input: %v", err)
 			}
 
-			objs, err := generator.Generate(generator.Input{Package: &pkg, Scheme: scheme})
+			// Sidecar shape mirrors the global ConfigMap: egress/ingress
+			// pools keyed like networkPolicies.{egress,ingress}.definitions.
+			var shared struct {
+				Egress  map[string]bbv1alpha1.NetworkPoliciesEgressDefinitionsValue  `json:"egress"`
+				Ingress map[string]bbv1alpha1.NetworkPoliciesIngressDefinitionsValue `json:"ingress"`
+			}
+			if b, err := os.ReadFile(strings.TrimSuffix(in, ".yaml") + ".global.yaml"); err == nil {
+				if err := yaml.UnmarshalStrict(b, &shared); err != nil {
+					t.Fatalf("parse global sidecar: %v", err)
+				}
+			}
+
+			objs, err := generator.Generate(generator.Input{
+				Package:                  &pkg,
+				Scheme:                   scheme,
+				SharedEgressDefinitions:  shared.Egress,
+				SharedIngressDefinitions: shared.Ingress,
+			})
 			if err != nil {
 				t.Fatalf("Generate: %v", err)
 			}

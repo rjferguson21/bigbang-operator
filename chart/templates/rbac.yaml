@@ -31,6 +31,11 @@ rules:
   - apiGroups: [""]
     resources: [events]
     verbs: [create, patch]
+  # global config ConfigMap (shared egress definitions); the informer is
+  # field-selected to the single object but still needs list/watch verbs
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

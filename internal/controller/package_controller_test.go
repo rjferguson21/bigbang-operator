@@ -16,6 +16,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bbv1alpha1 "bigbang.dev/operator/api/v1alpha1"
@@ -334,7 +335,166 @@ func TestReconcile_DefaultsAsHooksWarning(t *testing.T) {
 	})
 }
 
+// TestReconcile_GlobalConfigDefinitions exercises the shared egress
+// definition pool end to end: a Package resolves a definition from the
+// global ConfigMap, editing the ConfigMap re-reconciles the Package through
+// the watch, and a package-local definition shadows a shared name.
+func TestReconcile_GlobalConfigDefinitions(t *testing.T) {
+	te := startEnv(t)
+	te.ensureNamespace(t, globalConfigNS)
+	te.ensureNamespace(t, "rec-global")
+	ctx := context.Background()
+
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Namespace: globalConfigNS, Name: globalConfigName},
+		Data: map[string]string{
+			"egressDefinitions": `
+shared-db:
+  ports:
+    - port: 5432
+      protocol: TCP
+  to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          app: postgres
+local-wins:
+  ports:
+    - port: 1111
+      protocol: TCP
+  to:
+    - ipBlock: { cidr: 10.0.0.0/8 }
+`,
+			"ingressDefinitions": `
+shared-mon:
+  from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+      podSelector:
+        matchLabels:
+          app: scraper
+`,
+		},
+	}
+	mustCreate(t, te.k8s, cm)
+
+	pkg := newPackage("example-app", "rec-global", func(p *bbv1alpha1.Package) {
+		p.Spec.NetworkPolicies = &bbv1alpha1.NetworkPolicies{
+			Enabled: true,
+			Egress: &bbv1alpha1.NetworkPoliciesEgress{
+				Definitions: map[string]bbv1alpha1.NetworkPoliciesEgressDefinitionsValue{
+					"local-wins": {
+						Ports: []bbv1alpha1.NetworkPoliciesEgressDefinitionsValuePortsElem{{Port: intOrStringPtr(2222), Protocol: protoPtr("TCP")}},
+						To: []bbv1alpha1.NetworkPoliciesEgressDefinitionsValueToElem{{
+							IPBlock: &bbv1alpha1.NetworkPoliciesEgressDefinitionsValueToElemIPBlock{CIDR: strPtr("10.0.0.0/8")},
+						}},
+					},
+				},
+				From: map[string]apiextensionsv1.JSON{
+					"example-app": rawJSON(`{"to":{"definition":{"shared-db":true,"local-wins":true}}}`),
+				},
+			},
+			Ingress: &bbv1alpha1.NetworkPoliciesIngress{
+				To: map[string]apiextensionsv1.JSON{
+					"example-app:8080": rawJSON(`{"from":{"definition":{"shared-mon":true}}}`),
+				},
+			},
+		}
+	})
+	mustCreate(t, te.k8s, pkg)
+
+	// Shared ingress definition resolves.
+	waitFor(t, func() error {
+		var np networkingv1.NetworkPolicy
+		if err := te.k8s.Get(ctx, types.NamespacedName{Namespace: "rec-global", Name: "allow-ingress-to-example-app-tcp-port-8080-from-shared-mon"}, &np); err != nil {
+			return err
+		}
+		if np.Spec.Ingress[0].From[0].PodSelector.MatchLabels["app"] != "scraper" {
+			return fmt.Errorf("shared-mon peer = %+v, want app=scraper", np.Spec.Ingress[0].From[0])
+		}
+		return nil
+	})
+
+	// Shared definition resolves: netpol on 5432 with the empty
+	// namespaceSelector preserved.
+	sharedNP := types.NamespacedName{Namespace: "rec-global", Name: "allow-egress-from-example-app-to-shared-db"}
+	waitFor(t, func() error {
+		var np networkingv1.NetworkPolicy
+		if err := te.k8s.Get(ctx, sharedNP, &np); err != nil {
+			return err
+		}
+		if got := np.Spec.Egress[0].Ports[0].Port.IntValue(); got != 5432 {
+			return fmt.Errorf("shared-db port = %d, want 5432", got)
+		}
+		if np.Spec.Egress[0].To[0].NamespaceSelector == nil {
+			return fmt.Errorf("shared-db peer lost namespaceSelector: {}")
+		}
+		return nil
+	})
+
+	// Local definition shadows the shared name.
+	waitFor(t, func() error {
+		var np networkingv1.NetworkPolicy
+		if err := te.k8s.Get(ctx, types.NamespacedName{Namespace: "rec-global", Name: "allow-egress-from-example-app-to-local-wins"}, &np); err != nil {
+			return err
+		}
+		if got := np.Spec.Egress[0].Ports[0].Port.IntValue(); got != 2222 {
+			return fmt.Errorf("local-wins port = %d, want 2222 (local), not the shared 1111", got)
+		}
+		return nil
+	})
+
+	// Editing the ConfigMap must re-reconcile the Package via the watch.
+	var gotCM corev1.ConfigMap
+	if err := te.k8s.Get(ctx, types.NamespacedName{Namespace: globalConfigNS, Name: globalConfigName}, &gotCM); err != nil {
+		t.Fatalf("get configmap: %v", err)
+	}
+	gotCM.Data["egressDefinitions"] = `
+shared-db:
+  ports:
+    - port: 5433
+      protocol: TCP
+  to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          app: postgres
+local-wins:
+  ports:
+    - port: 1111
+      protocol: TCP
+  to:
+    - ipBlock: { cidr: 10.0.0.0/8 }
+`
+	if err := te.k8s.Update(ctx, &gotCM); err != nil {
+		t.Fatalf("update configmap: %v", err)
+	}
+	waitFor(t, func() error {
+		var np networkingv1.NetworkPolicy
+		if err := te.k8s.Get(ctx, sharedNP, &np); err != nil {
+			return err
+		}
+		if got := np.Spec.Egress[0].Ports[0].Port.IntValue(); got != 5433 {
+			return fmt.Errorf("shared-db port = %d, want 5433 after ConfigMap update", got)
+		}
+		return nil
+	})
+}
+
 // --- helpers ---
+
+func intOrStringPtr(i int) *intstr.IntOrString {
+	v := intstr.FromInt(i)
+	return &v
+}
+
+func strPtr(s string) *string { return &s }
+
+func protoPtr(s string) *bbv1alpha1.NetworkPoliciesEgressDefinitionsValuePortsElemProtocol {
+	v := bbv1alpha1.NetworkPoliciesEgressDefinitionsValuePortsElemProtocol(s)
+	return &v
+}
 
 func newPackage(name, namespace string, mutate func(*bbv1alpha1.Package)) *bbv1alpha1.Package {
 	p := &bbv1alpha1.Package{

@@ -8,7 +8,6 @@ import (
 
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
@@ -19,7 +18,7 @@ import (
 // NetworkPolicies (k8s, cidr, definition references are resolved in
 // definitions.go; literal rules pass their spec through verbatim).
 
-func expandShorthandEgress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies, kubeAPIPorts []intstr.IntOrString) ([]client.Object, error) {
+func expandShorthandEgress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies, env defsEnv) ([]client.Object, error) {
 	prepend := spec.PrependReleaseName
 	npLabels := defaultNetpolLabels("egress")
 	var out []client.Object
@@ -49,7 +48,7 @@ func expandShorthandEgress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPoli
 			if !target.Enabled {
 				continue
 			}
-			def, err := resolveEgressDefinition(spec, defName, kubeAPIPorts)
+			def, err := resolveEgressDefinition(spec, defName, env)
 			if err != nil {
 				return nil, fmt.Errorf("networkPolicies.egress.from.%s.to.definition: %w", localKey, err)
 			}
@@ -86,7 +85,7 @@ func expandShorthandEgress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPoli
 	return out, nil
 }
 
-func expandShorthandIngress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies) ([]client.Object, error) {
+func expandShorthandIngress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies, env defsEnv) ([]client.Object, error) {
 	prepend := spec.PrependReleaseName
 	npLabels := defaultNetpolLabels("ingress")
 	var out []client.Object
@@ -120,7 +119,7 @@ func expandShorthandIngress(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPol
 			if !target.Enabled {
 				continue
 			}
-			def, err := resolveIngressDefinition(spec, defName)
+			def, err := resolveIngressDefinition(spec, defName, env)
 			if err != nil {
 				return nil, fmt.Errorf("networkPolicies.ingress.to.%s.from.definition: %w", localKey, err)
 			}

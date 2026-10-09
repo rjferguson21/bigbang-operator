@@ -36,6 +36,13 @@ import (
 	"bigbang.dev/operator/internal/controller"
 )
 
+// Global config coordinates used by every test manager; the feature is
+// inert unless a test creates the ConfigMap.
+const (
+	globalConfigNS   = "bigbang-operator"
+	globalConfigName = "bigbang-operator-global"
+)
+
 // testEnv is the shared envtest harness for the reconciler tests in this
 // package. startEnv boots envtest, installs the operator's CRD plus the
 // istio CRDs the reconciler watches, and launches the manager. Cleanup is
@@ -92,10 +99,12 @@ func startEnv(t *testing.T) *testEnv {
 		t.Fatalf("manager: %v", err)
 	}
 	if err := (&controller.PackageReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		APIReader: mgr.GetAPIReader(),
-		Recorder:  mgr.GetEventRecorderFor("bigbang-operator"),
+		Client:                mgr.GetClient(),
+		Scheme:                mgr.GetScheme(),
+		APIReader:             mgr.GetAPIReader(),
+		Recorder:              mgr.GetEventRecorderFor("bigbang-operator"),
+		GlobalConfigNamespace: globalConfigNS,
+		GlobalConfigName:      globalConfigName,
 	}).SetupWithManager(mgr); err != nil {
 		t.Fatalf("SetupWithManager: %v", err)
 	}
