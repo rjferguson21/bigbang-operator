@@ -27,7 +27,9 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	bbv1alpha1 "bigbang.dev/operator/api/v1alpha1"
 	"bigbang.dev/operator/pkg/generator"
@@ -47,6 +49,11 @@ type PackageReconciler struct {
 	// Recorder emits Events for spec fields the generator accepts but does
 	// not honor. Optional; nil disables events.
 	Recorder record.EventRecorder
+	// GlobalConfigNamespace/GlobalConfigName locate the operator's global
+	// ConfigMap (shared egress definitions). Empty namespace disables the
+	// feature entirely — no fetch, no watch.
+	GlobalConfigNamespace string
+	GlobalConfigName      string
 }
 
 // +kubebuilder:rbac:groups=bigbang.dev,resources=packages,verbs=get;list;watch;create;update;patch;delete
@@ -57,6 +64,7 @@ type PackageReconciler struct {
 // +kubebuilder:rbac:groups=networking.istio.io,resources=sidecars;serviceentries;virtualservices,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
 func (r *PackageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -93,10 +101,14 @@ func (r *PackageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	sharedEgress, sharedIngress, sharedErr := r.sharedDefinitions(ctx)
 	desired, err := generator.Generate(generator.Input{
-		Package:      &pkg,
-		Scheme:       r.Scheme,
-		KubeAPIPorts: r.kubeAPIPorts(ctx, &pkg),
+		Package:                  &pkg,
+		Scheme:                   r.Scheme,
+		KubeAPIPorts:             r.kubeAPIPorts(ctx, &pkg),
+		SharedEgressDefinitions:  sharedEgress,
+		SharedIngressDefinitions: sharedIngress,
+		SharedDefinitionsError:   sharedErr,
 	})
 	if err != nil {
 		reconcileTotal.WithLabelValues(pkg.Namespace, pkg.Name, outcomeGenerationFailed).Inc()
@@ -157,6 +169,55 @@ func (r *PackageReconciler) kubeAPIPorts(ctx context.Context, pkg *bbv1alpha1.Pa
 	return ports
 }
 
+// sharedDefinitions fetches and parses the operator's global ConfigMap.
+// Feature disabled or ConfigMap absent → all nil. A fetch or parse failure
+// is returned as the error so the generator can fail resolution precisely
+// where the shared pools would have been consulted.
+func (r *PackageReconciler) sharedDefinitions(ctx context.Context) (
+	map[string]bbv1alpha1.NetworkPoliciesEgressDefinitionsValue,
+	map[string]bbv1alpha1.NetworkPoliciesIngressDefinitionsValue,
+	error,
+) {
+	if r.GlobalConfigNamespace == "" || r.GlobalConfigName == "" {
+		return nil, nil, nil
+	}
+	var cm corev1.ConfigMap
+	if err := r.Get(ctx, types.NamespacedName{Namespace: r.GlobalConfigNamespace, Name: r.GlobalConfigName}, &cm); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil, nil
+		}
+		return nil, nil, fmt.Errorf("get global config %s/%s: %w", r.GlobalConfigNamespace, r.GlobalConfigName, err)
+	}
+	egress, err := generator.ParseSharedEgressDefinitions(cm.Data[generator.GlobalConfigEgressKey])
+	if err != nil {
+		return nil, nil, err
+	}
+	ingress, err := generator.ParseSharedIngressDefinitions(cm.Data[generator.GlobalConfigIngressKey])
+	if err != nil {
+		return nil, nil, err
+	}
+	return egress, ingress, nil
+}
+
+// packagesForGlobalConfig enqueues every Package when the global ConfigMap
+// changes. The production cache only holds that one ConfigMap, but tests run
+// unrestricted, so filter by name/namespace here too.
+func (r *PackageReconciler) packagesForGlobalConfig(ctx context.Context, obj client.Object) []reconcile.Request {
+	if obj.GetNamespace() != r.GlobalConfigNamespace || obj.GetName() != r.GlobalConfigName {
+		return nil
+	}
+	var pkgs bbv1alpha1.PackageList
+	if err := r.List(ctx, &pkgs); err != nil {
+		log.FromContext(ctx).Error(err, "list packages for global config change")
+		return nil
+	}
+	out := make([]reconcile.Request, 0, len(pkgs.Items))
+	for _, p := range pkgs.Items {
+		out = append(out, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: p.Namespace, Name: p.Name}})
+	}
+	return out
+}
+
 func (r *PackageReconciler) applyAll(ctx context.Context, desired []client.Object) error {
 	for _, obj := range desired {
 		if err := r.Patch(ctx, obj, client.Apply, client.ForceOwnership, client.FieldOwner(fieldManager)); err != nil {
@@ -166,17 +227,17 @@ func (r *PackageReconciler) applyAll(ctx context.Context, desired []client.Objec
 	return nil
 }
 
-// (unused, retained as a compile-time assertion that types.NamespacedName is
-// imported — we may need it in the next reconciler revision)
 func (r *PackageReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&bbv1alpha1.Package{}).
 		Owns(&networkingv1.NetworkPolicy{}).
 		Owns(&istiosecv1.PeerAuthentication{}).
 		Owns(&istiosecv1.AuthorizationPolicy{}).
 		Owns(&istionetv1.VirtualService{}).
 		Owns(&istionetv1.ServiceEntry{}).
-		Owns(&istionetv1.Sidecar{}).
-		Named("package").
-		Complete(r)
+		Owns(&istionetv1.Sidecar{})
+	if r.GlobalConfigNamespace != "" && r.GlobalConfigName != "" {
+		b = b.Watches(&corev1.ConfigMap{}, handler.EnqueueRequestsFromMapFunc(r.packagesForGlobalConfig))
+	}
+	return b.Named("package").Complete(r)
 }

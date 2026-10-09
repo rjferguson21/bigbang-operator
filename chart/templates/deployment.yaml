@@ -31,6 +31,8 @@ spec:
             - --metrics-bind-address={{ .Values.metrics.bindAddress }}
             - --metrics-secure={{ .Values.metrics.secure }}
             - --leader-elect={{ .Values.leaderElection.enabled }}
+            - --global-config-name={{ .Values.globalConfig.name }}
+            - --global-config-namespace={{ .Release.Namespace }}
           ports:
             - name: health
               containerPort: 8081
