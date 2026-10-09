@@ -25,10 +25,14 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -68,6 +72,7 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var globalConfigName, globalConfigNamespace string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -86,6 +91,10 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&globalConfigName, "global-config-name", "bigbang-operator-global",
+		"Name of the ConfigMap holding shared operator configuration (e.g. egress definitions).")
+	flag.StringVar(&globalConfigNamespace, "global-config-namespace", os.Getenv("POD_NAMESPACE"),
+		"Namespace of the global ConfigMap. Defaults to $POD_NAMESPACE; empty disables the global config entirely.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -161,8 +170,26 @@ func main() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
+	// Restrict the ConfigMap informer to the single global config object —
+	// without this the watch would cache every ConfigMap in the cluster.
+	var cacheOpts cache.Options
+	if globalConfigNamespace != "" {
+		cacheOpts.ByObject = map[client.Object]cache.ByObject{
+			&corev1.ConfigMap{}: {
+				Namespaces: map[string]cache.Config{
+					globalConfigNamespace: {
+						FieldSelector: fields.OneTermEqualSelector("metadata.name", globalConfigName),
+					},
+				},
+			},
+		}
+	} else {
+		setupLog.Info("global config disabled (no --global-config-namespace / POD_NAMESPACE)")
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
+		Cache:                  cacheOpts,
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
@@ -186,10 +213,12 @@ func main() {
 	}
 
 	if err := (&controller.PackageReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		APIReader: mgr.GetAPIReader(),
-		Recorder:  mgr.GetEventRecorderFor("bigbang-operator"),
+		Client:                mgr.GetClient(),
+		Scheme:                mgr.GetScheme(),
+		APIReader:             mgr.GetAPIReader(),
+		Recorder:              mgr.GetEventRecorderFor("bigbang-operator"),
+		GlobalConfigNamespace: globalConfigNamespace,
+		GlobalConfigName:      globalConfigName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Package")
 		os.Exit(1)

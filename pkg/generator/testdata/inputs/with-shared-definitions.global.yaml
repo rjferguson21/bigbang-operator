@@ -1,0 +1,27 @@
+# Shared definitions, as authored in the operator's global ConfigMap
+# (egress -> egressDefinitions key, ingress -> ingressDefinitions key).
+egress:
+  elasticsearch:
+    ports:
+      - port: 9200
+        protocol: TCP
+    to:
+      - namespaceSelector: {}
+        podSelector:
+          matchLabels:
+            common.k8s.elastic.co/type: elasticsearch
+  object-storage:
+    ports:
+      - port: 443
+        protocol: TCP
+    to:
+      - ipBlock: { cidr: 10.43.0.0/16 }
+ingress:
+  argocd:
+    from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: argocd
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: argocd-server

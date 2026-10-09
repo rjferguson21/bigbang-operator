@@ -66,6 +66,17 @@ cluster-wide Service informer), and only when a Package actually references
 the definition. Lookup failure degrades to all-ports, same as bb-common when
 its lookup returns nothing.
 
+## Global config watch
+
+Shared egress/ingress definitions live in the `bigbang-operator-global` ConfigMap
+(see [network-policies.md](network-policies.md#shared-definitions-global-configmap)).
+The controller watches that single object — the informer is field-selected
+to its name and namespace, so no cluster-wide ConfigMap cache — and any
+change re-enqueues every Package, so edits propagate to generated
+NetworkPolicies without touching the Packages themselves. Disabled entirely
+when `--global-config-namespace` is empty (e.g. `make run` outside a pod
+without `POD_NAMESPACE`).
+
 ## Events
 
 Spec fields that are accepted but deliberately not honored produce a Warning

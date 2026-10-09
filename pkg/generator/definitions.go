@@ -73,44 +73,75 @@ func builtInIngressDefinitions() map[string]resolvedDefinition {
 	}
 }
 
-// resolveEgressDefinition returns the built-in definition for `name`, with
-// any user override (under `networkPolicies.egress.definitions.<name>`)
-// applied. Unknown names produce an error so typos surface at reconcile.
-func resolveEgressDefinition(spec *bbv1alpha1.NetworkPolicies, name string, kubeAPIPorts []intstr.IntOrString) (*resolvedDefinition, error) {
-	defs := builtInEgressDefinitions(kubeAPIPorts)
-	if spec.Egress != nil {
-		for k, raw := range spec.Egress.Definitions {
-			parsed, err := parseEgressDefinition(raw)
-			if err != nil {
-				return nil, fmt.Errorf("egress.definitions.%s: %w", k, err)
-			}
-			defs[k] = *parsed
-		}
-	}
-	d, ok := defs[name]
-	if !ok {
-		return nil, fmt.Errorf("egress definition %q not found", name)
-	}
-	return &d, nil
+// defsEnv carries the reconcile-time inputs that shape definition
+// resolution: the kubeAPI port lookup and the shared pools from the
+// operator's global ConfigMap.
+type defsEnv struct {
+	kubeAPIPorts  []intstr.IntOrString
+	sharedEgress  map[string]bbv1alpha1.NetworkPoliciesEgressDefinitionsValue
+	sharedIngress map[string]bbv1alpha1.NetworkPoliciesIngressDefinitionsValue
+	sharedErr     error
 }
 
-// resolveIngressDefinition is the ingress counterpart.
-func resolveIngressDefinition(spec *bbv1alpha1.NetworkPolicies, name string) (*resolvedDefinition, error) {
-	defs := builtInIngressDefinitions()
-	if spec.Ingress != nil {
-		for k, raw := range spec.Ingress.Definitions {
-			parsed, err := parseIngressDefinition(raw)
+// resolveEgressDefinition returns the definition for `name`. Layering on
+// name collision: built-in < shared (global ConfigMap) < package-local.
+// Unknown names produce an error so typos surface at reconcile.
+func resolveEgressDefinition(spec *bbv1alpha1.NetworkPolicies, name string, env defsEnv) (*resolvedDefinition, error) {
+	// Package-local first: it wins outright, and is the only layer safe to
+	// resolve when the shared pool is unreadable.
+	if spec.Egress != nil {
+		if raw, ok := spec.Egress.Definitions[name]; ok {
+			parsed, err := parseEgressDefinition(raw)
 			if err != nil {
-				return nil, fmt.Errorf("ingress.definitions.%s: %w", k, err)
+				return nil, fmt.Errorf("egress.definitions.%s: %w", name, err)
 			}
-			defs[k] = *parsed
+			return parsed, nil
 		}
 	}
-	d, ok := defs[name]
-	if !ok {
-		return nil, fmt.Errorf("ingress definition %q not found", name)
+	if env.sharedErr != nil {
+		// The shared pool could hold or override `name`; guessing from the
+		// remaining layers would silently change which rule is emitted.
+		return nil, fmt.Errorf("egress definition %q: global config unreadable: %w", name, env.sharedErr)
 	}
-	return &d, nil
+	if raw, ok := env.sharedEgress[name]; ok {
+		parsed, err := parseEgressDefinition(raw)
+		if err != nil {
+			return nil, fmt.Errorf("global egress definition %s: %w", name, err)
+		}
+		return parsed, nil
+	}
+	if d, ok := builtInEgressDefinitions(env.kubeAPIPorts)[name]; ok {
+		return &d, nil
+	}
+	return nil, fmt.Errorf("egress definition %q not found", name)
+}
+
+// resolveIngressDefinition is the ingress counterpart, with the same
+// built-in < shared < package-local layering.
+func resolveIngressDefinition(spec *bbv1alpha1.NetworkPolicies, name string, env defsEnv) (*resolvedDefinition, error) {
+	if spec.Ingress != nil {
+		if raw, ok := spec.Ingress.Definitions[name]; ok {
+			parsed, err := parseIngressDefinition(raw)
+			if err != nil {
+				return nil, fmt.Errorf("ingress.definitions.%s: %w", name, err)
+			}
+			return parsed, nil
+		}
+	}
+	if env.sharedErr != nil {
+		return nil, fmt.Errorf("ingress definition %q: global config unreadable: %w", name, env.sharedErr)
+	}
+	if raw, ok := env.sharedIngress[name]; ok {
+		parsed, err := parseIngressDefinition(raw)
+		if err != nil {
+			return nil, fmt.Errorf("global ingress definition %s: %w", name, err)
+		}
+		return parsed, nil
+	}
+	if d, ok := builtInIngressDefinitions()[name]; ok {
+		return &d, nil
+	}
+	return nil, fmt.Errorf("ingress definition %q not found", name)
 }
 
 // definitionPeer is the loose peer shape of one entry under

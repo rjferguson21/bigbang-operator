@@ -24,6 +24,18 @@ type Input struct {
 	// `default/kubernetes` Service (mirroring bb-common's render-time
 	// lookup); empty means no port restriction.
 	KubeAPIPorts []intstr.IntOrString
+	// SharedEgressDefinitions / SharedIngressDefinitions are the
+	// cluster-wide definition pools from the operator's global ConfigMap,
+	// referencable by any Package exactly like package-local definitions.
+	// Precedence on name collision: built-in < shared < package-local.
+	SharedEgressDefinitions  map[string]bbv1alpha1.NetworkPoliciesEgressDefinitionsValue
+	SharedIngressDefinitions map[string]bbv1alpha1.NetworkPoliciesIngressDefinitionsValue
+	// SharedDefinitionsError is set when the global ConfigMap exists but
+	// cannot be parsed. Resolving any definition not declared
+	// package-locally then fails with this error: the shared pools could
+	// have held or overridden the name, so falling back silently would be
+	// unsafe.
+	SharedDefinitionsError error
 }
 
 // Warnings returns human-readable notes about spec fields the generator
@@ -61,7 +73,13 @@ func Generate(in Input) ([]client.Object, error) {
 	}
 
 	if spec.NetworkPolicies != nil && spec.NetworkPolicies.Enabled {
-		objs, err := generateNetworkPolicies(in.Package, spec.NetworkPolicies, spec.Istio, in.KubeAPIPorts)
+		env := defsEnv{
+			kubeAPIPorts:  in.KubeAPIPorts,
+			sharedEgress:  in.SharedEgressDefinitions,
+			sharedIngress: in.SharedIngressDefinitions,
+			sharedErr:     in.SharedDefinitionsError,
+		}
+		objs, err := generateNetworkPolicies(in.Package, spec.NetworkPolicies, spec.Istio, env)
 		if err != nil {
 			return nil, fmt.Errorf("networkPolicies: %w", err)
 		}

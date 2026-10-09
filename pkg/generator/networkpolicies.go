@@ -20,21 +20,21 @@ var defaultEgressExcludeCIDRs = []string{"169.254.169.254/32"}
 
 // generateNetworkPolicies renders default NetworkPolicies, shorthand
 // egress/ingress, and raw policies declared under `additionalPolicies[]`.
-func generateNetworkPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies, istio *bbv1alpha1.Istio, kubeAPIPorts []intstr.IntOrString) ([]client.Object, error) {
+func generateNetworkPolicies(pkg *bbv1alpha1.Package, spec *bbv1alpha1.NetworkPolicies, istio *bbv1alpha1.Istio, env defsEnv) ([]client.Object, error) {
 	var out []client.Object
 
 	out = append(out, defaultEgressPolicies(pkg, spec, istio)...)
 	out = append(out, defaultIngressPolicies(pkg, spec, istio)...)
 
 	if spec.Egress != nil {
-		objs, err := expandShorthandEgress(pkg, spec, kubeAPIPorts)
+		objs, err := expandShorthandEgress(pkg, spec, env)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, objs...)
 	}
 	if spec.Ingress != nil {
-		objs, err := expandShorthandIngress(pkg, spec)
+		objs, err := expandShorthandIngress(pkg, spec, env)
 		if err != nil {
 			return nil, err
 		}

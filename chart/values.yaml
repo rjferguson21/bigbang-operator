@@ -21,6 +21,20 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
+# Shared operator configuration. The operator reads egress/ingress
+# definitions from this ConfigMap (in the release namespace) and makes them
+# resolvable from any Package's networkPolicies.*.definition.<name>.
+# Precedence on name collision: built-in < shared < package-local.
+globalConfig:
+  name: bigbang-operator-global
+  # Render the ConfigMap from this chart. Leave false to manage it
+  # out-of-band (e.g. from a GitOps repo).
+  create: false
+  # Maps of definition name -> same schema as
+  # networkPolicies.{egress,ingress}.definitions.<name>.
+  egressDefinitions: {}
+  ingressDefinitions: {}
+
 # Manager command-line flags.
 leaderElection:
   enabled: true

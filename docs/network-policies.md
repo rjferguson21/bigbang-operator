@@ -186,6 +186,55 @@ semantics: `namespaceSelector: {}` on a peer means "in any namespace" and
 `podSelector: {}` means "all pods in the selected namespaces" — neither is
 dropped from the generated policy.
 
+### Shared definitions (global ConfigMap)
+
+Definitions can also live in a cluster-wide pool: the
+`bigbang-operator-global` ConfigMap in the operator's namespace, under the
+`egressDefinitions` and `ingressDefinitions` keys. Every Package can
+reference them exactly like a package-local definition — define
+`elasticsearch` once, reference it from every package that needs it:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bigbang-operator-global
+  namespace: bigbang-operator
+data:
+  egressDefinitions: |
+    elasticsearch:
+      ports:
+        - port: 9200
+          protocol: TCP
+      to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              common.k8s.elastic.co/type: elasticsearch
+  ingressDefinitions: |
+    argocd:
+      from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: argocd
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: argocd-server
+```
+
+Precedence on name collision: **built-in < shared < package-local** — a
+shared definition can override `kubeAPI`, and a package-local definition
+always wins over shared. Editing the ConfigMap re-reconciles every Package
+automatically. The chart can render the ConfigMap
+(`globalConfig.create: true` + `globalConfig.egressDefinitions`), or manage
+it out-of-band; the name and namespace come from the
+`--global-config-name` / `--global-config-namespace` manager flags.
+
+If the ConfigMap exists but doesn't parse, any Package resolving a
+definition that isn't package-local fails its reconcile with
+`global config unreadable` — the shared pool could have held or overridden
+the name, so the operator refuses to guess.
+
 ## excludeCIDRs
 
 ```yaml
