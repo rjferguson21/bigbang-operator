@@ -11,7 +11,7 @@ GHCR by the release pipeline:
 ```sh
 helm install bigbang-operator \
   oci://ghcr.io/rjferguson21/charts/bigbang-operator \
-  --version 0.2.1 \
+  --version 0.3.0 \
   --namespace bigbang-operator --create-namespace
 ```
 
@@ -39,7 +39,7 @@ For Iron Bank-hardened deploys, override the image repository instead:
 ```sh
 helm install bigbang-operator \
   oci://ghcr.io/rjferguson21/charts/bigbang-operator \
-  --version 0.2.1 \
+  --version 0.3.0 \
   --namespace bigbang-operator --create-namespace \
   --set image.repository=registry1.dso.mil/ironbank/big-bang/bigbang-operator
 ```
