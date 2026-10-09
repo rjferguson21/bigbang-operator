@@ -1,0 +1,45 @@
+site_name: bigbang-operator
+site_description: Kubernetes operator reconciling Package CRs into bb-common-equivalent Istio and NetworkPolicy resources
+site_url: https://rjferguson21.github.io/bigbang-operator/
+repo_url: https://github.com/rjferguson21/bigbang-operator
+repo_name: rjferguson21/bigbang-operator
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.footer
+    - navigation.sections
+    - content.code.copy
+    - content.action.edit
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+nav:
+  - Overview: README.md
+  - Guides:
+      - Network Policies: network-policies.md
+      - Routes: routes.md
+      - Authorization Policies: authorization-policies.md
+      - Istio: istio.md
+  - Reference:
+      - Controller Behavior: controller.md
+      - Migrating from bb-common: migrating-from-bb-common.md

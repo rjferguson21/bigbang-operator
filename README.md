@@ -13,10 +13,11 @@ For a `Package` with all features on, the operator produces:
 - **Istio**: `PeerAuthentication`, `Sidecar`, default `AuthorizationPolicy`
   resources, plus generated APs from NetworkPolicy shorthand and per-route
   APs that pin gateway-to-workload traffic to the gateway's ServiceAccount.
-- **NetworkPolicies**: 8 baseline policies (deny-all and allow-in-ns in
-  both directions, kube-DNS, istiod, prometheus-to-sidecar, ambient-kubelet)
-  plus shorthand K8s/CIDR/definition/literal rules with HBONE port-15008
-  injection under ambient mode.
+- **NetworkPolicies**: 7 baseline policies (deny-all and allow-in-ns in
+  both directions, kube-DNS, istiod, prometheus-to-sidecar; an 8th,
+  ambient-kubelet, under ambient mode) plus shorthand
+  K8s/CIDR/definition/literal rules with HBONE port-15008 injection under
+  ambient mode.
 - **Routes**: `VirtualService` + `ServiceEntry` per inbound, gateway-permitting
   `NetworkPolicy`, TLS passthrough mode, advanced HTTP rules
   (match/rewrite/retries/fault), and outbound `ServiceEntry`.

@@ -80,7 +80,7 @@ applying garbage).
 ## Custom AuthorizationPolicies
 
 Two forms, both under `istio.authorizationPolicies` — see
-[authorization-policies.md](authorization-policies.md#custom-policies).
+[authorization-policies.md](authorization-policies.md#4-custom-policies).
 
 ## prependReleaseName
 
