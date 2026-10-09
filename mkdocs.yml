@@ -35,6 +35,7 @@ markdown_extensions:
 
 nav:
   - Overview: README.md
+  - Installation: installation.md
   - Guides:
       - Network Policies: network-policies.md
       - Routes: routes.md

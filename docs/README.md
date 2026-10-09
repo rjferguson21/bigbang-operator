@@ -14,6 +14,7 @@ you already know the Package API.
 
 | Doc | Covers |
 |---|---|
+| [installation.md](installation.md) | Helm install, chart reference (rendered resources, values), first Package, uninstall caveats |
 | [network-policies.md](network-policies.md) | Default policies, egress/ingress shorthand (k8s, cidr, definition, literal), metadata overrides, `excludeCIDRs`, HBONE injection, raw passthrough |
 | [istio.md](istio.md) | PeerAuthentication, Sidecar, ambient mode side-effects, custom ServiceEntries |
 | [global-config.md](global-config.md) | Cluster-wide shared config: the global ConfigMap, shared egress/ingress definitions, precedence, change propagation |
