@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	istiosecv1 "istio.io/client-go/pkg/apis/security/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -480,6 +481,69 @@ local-wins:
 		}
 		return nil
 	})
+}
+
+// TestReconcile_TwoPackagesSharedNamespace is the regression test for the
+// default-AP ownership fight (#8): two Packages in one namespace, one with
+// istio.prependReleaseName, must emit four distinct default
+// AuthorizationPolicies and converge — no hot reconcile loop flipping
+// ownership of shared-name objects.
+func TestReconcile_TwoPackagesSharedNamespace(t *testing.T) {
+	te := startEnv(t)
+	te.ensureNamespace(t, "rec-shared")
+	ctx := context.Background()
+
+	istioOn := func(prepend bool) *bbv1alpha1.Istio {
+		return &bbv1alpha1.Istio{
+			Enabled:               true,
+			PrependReleaseName:    prepend,
+			AuthorizationPolicies: &bbv1alpha1.IstioAuthorizationPolicies{Enabled: true},
+		}
+	}
+	plain := newPackage("monitoring", "rec-shared", func(p *bbv1alpha1.Package) {
+		p.Spec.Istio = istioOn(false)
+	})
+	prepended := newPackage("grafana", "rec-shared", func(p *bbv1alpha1.Package) {
+		p.Spec.Istio = istioOn(true)
+	})
+	mustCreate(t, te.k8s, plain)
+	mustCreate(t, te.k8s, prepended)
+
+	// All four default APs must exist, distinctly named.
+	apNames := []string{
+		"default-authz-allow-nothing",
+		"default-authz-allow-all-in-ns",
+		"grafana-default-authz-allow-nothing",
+		"grafana-default-authz-allow-all-in-ns",
+	}
+	rvs := map[string]string{}
+	waitFor(t, func() error {
+		for _, name := range apNames {
+			var ap istiosecv1.AuthorizationPolicy
+			if err := te.k8s.Get(ctx, types.NamespacedName{Namespace: "rec-shared", Name: name}, &ap); err != nil {
+				return err
+			}
+			rvs[name] = ap.ResourceVersion
+		}
+		return nil
+	})
+
+	// Hot-loop detector: resourceVersions must be stable once both
+	// packages converge. Before the fix, the two unprefixed APs churned
+	// several times per second as each package stamped its own ownership.
+	time.Sleep(3 * time.Second)
+	for _, name := range apNames {
+		var ap istiosecv1.AuthorizationPolicy
+		if err := te.k8s.Get(ctx, types.NamespacedName{Namespace: "rec-shared", Name: name}, &ap); err != nil {
+			t.Fatalf("get %s: %v", name, err)
+		}
+		if ap.ResourceVersion != rvs[name] {
+			t.Errorf("%s resourceVersion churned (%s -> %s): packages are fighting over it", name, rvs[name], ap.ResourceVersion)
+		}
+		if len(ap.OwnerReferences) != 1 {
+			t.Errorf("%s has %d ownerReferences, want exactly 1", name, len(ap.OwnerReferences))
+		}
+	}
 }
 
 // --- helpers ---
