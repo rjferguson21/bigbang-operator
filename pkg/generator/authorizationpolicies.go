@@ -90,7 +90,10 @@ func generateDefaultAuthzPolicies(pkg *bbv1alpha1.Package, istio *bbv1alpha1.Ist
 	if authzAllowNothing(istio) {
 		out = append(out, &istiosecv1.AuthorizationPolicy{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: "default-authz-allow-nothing",
+				// istio-scoped prepend, matching bb-common and the default
+				// PeerAuthentication. Without it two Packages in one
+				// namespace emit the same object and fight over ownership.
+				Name: prependName(istio.PrependReleaseName, pkg.Name, "default-authz-allow-nothing"),
 			},
 			Spec: istiosecv1beta1.AuthorizationPolicy{},
 		})
@@ -98,7 +101,7 @@ func generateDefaultAuthzPolicies(pkg *bbv1alpha1.Package, istio *bbv1alpha1.Ist
 	if authzAllowAllInNS(istio) {
 		out = append(out, &istiosecv1.AuthorizationPolicy{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: "default-authz-allow-all-in-ns",
+				Name: prependName(istio.PrependReleaseName, pkg.Name, "default-authz-allow-all-in-ns"),
 			},
 			Spec: istiosecv1beta1.AuthorizationPolicy{
 				Action: istiosecv1beta1.AuthorizationPolicy_ALLOW,

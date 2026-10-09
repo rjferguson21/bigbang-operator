@@ -1,0 +1,17 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: grafana
+  namespace: monitoring
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  istio:
+    enabled: true
+    prependReleaseName: true
+    authorizationPolicies:
+      enabled: true
+      generateFromNetpol: false
+  networkPolicies:
+    enabled: true
+    defaults: { enabled: false }
+    egress: { defaults: { enabled: false } }
