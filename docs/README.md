@@ -45,8 +45,8 @@ kubectl get packages -A                        # READY / REASON / AGE
 kubectl -n example-app get netpol,peerauthentication
 ```
 
-Real-world examples live in [`config/samples/`](../config/samples/) —
+Real-world examples live in [`config/samples/`](https://github.com/rjferguson21/bigbang-operator/tree/main/config/samples) —
 including `Package`s shaped after Big Bang's kiali and loki values.
 
-Design history (why decisions were made) is in [`plan/`](../plan/); these
+Design history (why decisions were made) is in [`plan/`](https://github.com/rjferguson21/bigbang-operator/tree/main/plan); these
 docs describe what the operator does today.

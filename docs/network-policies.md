@@ -181,6 +181,11 @@ networkPolicies:
 Referencing an unknown definition fails the reconcile
 (`Ready=False / GenerationFailed`) — typos surface immediately.
 
+Explicit empty selectors are preserved with their Kubernetes match-all
+semantics: `namespaceSelector: {}` on a peer means "in any namespace" and
+`podSelector: {}` means "all pods in the selected namespaces" — neither is
+dropped from the generated policy.
+
 ### Shared definitions (global ConfigMap)
 
 Definitions can also live in a cluster-wide pool: the
