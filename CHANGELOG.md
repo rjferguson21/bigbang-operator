@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] (2026-10-10)
+
+### Fixed
+
+- The published image is now a multi-arch manifest (`linux/amd64` and
+  `linux/arm64`), so the operator runs on arm64 clusters such as k3d on
+  Apple Silicon (#10)
+
 ## [0.3.1] (2026-10-09)
 
 ### Fixed
