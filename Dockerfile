@@ -1,5 +1,7 @@
 # Build the manager binary
-FROM golang:1.25 AS builder
+# Pin the builder to the build host so Go cross-compiles for TARGETARCH
+# natively instead of running under QEMU emulation.
+FROM --platform=$BUILDPLATFORM golang:1.25 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
