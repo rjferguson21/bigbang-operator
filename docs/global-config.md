@@ -1,14 +1,14 @@
 # Global configuration
 
 Cluster-wide operator configuration shared by every Package, delivered
-through a single ConfigMap. Today it carries shared egress/ingress
-definitions; it is the designated home for any future "define once, use
-everywhere" settings.
+through a single ConfigMap. It carries shared egress/ingress definitions,
+ingress route defaults, and gateway workload selectors and identities.
 
 ## The ConfigMap
 
 By default the operator reads `bigbang-operator-global` in its own
-namespace. Two data keys are recognized, each a YAML map using the exact
+namespace. The `egressDefinitions` and `ingressDefinitions` data keys are
+YAML maps using the exact
 same schema as the package-local
 `networkPolicies.{egress,ingress}.definitions` blocks:
 
@@ -78,12 +78,51 @@ built-in  <  shared (global ConfigMap)  <  package-local
 - A package-local definition always shadows a shared one of the same name —
   packages can opt out of central definitions without coordination.
 
+## Ingress gateways
+
+Two more YAML data keys configure inbound routing:
+
+```yaml
+data:
+  routes: |
+    defaults:
+      inbound:
+        gateways:
+          - istio-gateway/public-ingressgateway
+  gateways: |
+    istio-gateway/public-ingressgateway:
+      podSelector:
+        matchLabels:
+          app: public-ingressgateway
+      serviceAccountName: public-ingressgateway
+```
+
+The chart exposes these as `globalConfig.routes` and `globalConfig.gateways`
+when `globalConfig.create: true`. Route gateway lists override Package
+defaults, which override global defaults; lists are never merged. Gateway
+definitions are shared and keyed by the exact namespace-qualified reference.
+See [route configuration](routes.md#gateway-defaults-and-identities) for
+selector semantics, required fields, and the legacy fallback.
+
+Malformed ingress configuration fails any Package with enabled inbound
+routes (`Ready=False`, `GenerationFailed`), even with an explicit gateway
+list: the unreadable shared definitions could change that gateway's
+identity. Previously applied resources are left in place until configuration
+is repaired. Packages with only outbound or disabled inbound routes are
+unaffected. Ingress configuration errors and network-policy definition
+errors are handled independently.
+
 ## Change propagation
 
 The controller watches the ConfigMap (the informer is field-selected to that
 single object — no cluster-wide ConfigMap caching) and re-reconciles every
 Package on any edit. Changing a shared definition updates the generated
 NetworkPolicies everywhere it is referenced, without touching Package specs.
+Changing ingress defaults or gateway definitions also updates routing and
+authorization policies and prunes resources for gateways no longer used.
+Deleting the ConfigMap removes shared settings: explicit routes fall back to
+legacy identities, while routes relying solely on global gateways fail
+validation and retain their last applied resources.
 
 ## Location and discovery
 
@@ -109,6 +148,8 @@ Two options:
   name/namespace.
 
 ## Failure modes
+
+For network-policy definitions:
 
 | State | Behavior |
 |---|---|

@@ -1,7 +1,7 @@
 <!-- Warning: Do not manually edit this file. See notes on gluon + helm-docs at the end of this file for more information. -->
 # bigbang-operator
 
-![Version: 0.4.0-bb.0](https://img.shields.io/badge/Version-0.4.0--bb.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.4.0-bb.0](https://img.shields.io/badge/AppVersion-0.4.0--bb.0-informational?style=flat-square) ![Maintenance Track: unknown](https://img.shields.io/badge/Maintenance_Track-unknown-red?style=flat-square)
+![Version: 0.5.0-bb.0](https://img.shields.io/badge/Version-0.5.0--bb.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.5.0-bb.0](https://img.shields.io/badge/AppVersion-0.5.0--bb.0-informational?style=flat-square) ![Maintenance Track: unknown](https://img.shields.io/badge/Maintenance_Track-unknown-red?style=flat-square)
 
 Operator that reconciles Big Bang Package CRs into istio + NetworkPolicy resources.
 
@@ -50,7 +50,7 @@ helm install bigbang-operator chart/
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | image.repository | string | `"ghcr.io/rjferguson21/bigbang-operator"` |  |
-| image.tag | string | `"0.4.0-bb.0"` |  |
+| image.tag | string | `"0.5.0-bb.0"` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | imagePullSecrets | list | `[]` |  |
 | replicas | int | `1` |  |
@@ -65,6 +65,8 @@ helm install bigbang-operator chart/
 | globalConfig.create | bool | `false` |  |
 | globalConfig.egressDefinitions | object | `{}` |  |
 | globalConfig.ingressDefinitions | object | `{}` |  |
+| globalConfig.routes | object | `{}` |  |
+| globalConfig.gateways | object | `{}` |  |
 | leaderElection.enabled | bool | `true` |  |
 | metrics.bindAddress | string | `":8443"` |  |
 | metrics.secure | bool | `true` |  |

@@ -130,6 +130,7 @@ src = re.sub(
 open(path, 'w').write(src)
 PY
 
+# Routes and its supported defaults are maintained in routes_shorthand.go.
 # Drop unused root-level types: the unexported bbCommonValues wrapper and
 # its companions Global and SelfTest aren't part of PackageSpec.
 python3 - "${OUT}.tmp" <<'PY'
@@ -147,12 +148,12 @@ def strip_type(src, name):
 lines = src.splitlines(keepends=True)
 out = []
 skip = False
-targets = {'bbCommonValues', 'Global', 'SelfTest'}
+targets = {'bbCommonValues', 'Global', 'SelfTest', 'Routes'}
 i = 0
 while i < len(lines):
     line = lines[i]
     m = re.match(r'^type (\w+)\b', line)
-    if m and m.group(1) in targets:
+    if m and (m.group(1) in targets or m.group(1).startswith('RoutesDefaults')):
         # consume preceding comment block already emitted? remove the trailing comment lines we wrote.
         while out and out[-1].lstrip().startswith('//'):
             out.pop()

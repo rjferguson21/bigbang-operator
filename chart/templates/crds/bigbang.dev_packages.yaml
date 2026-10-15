@@ -563,6 +563,22 @@ spec:
                   routes configures Istio inbound (VirtualService/ServiceEntry +
                   NetworkPolicy/AuthorizationPolicy) and outbound (ServiceEntry) routing.
                 properties:
+                  defaults:
+                    description: RouteDefaults supplies fallback fields for routes
+                      that omit them.
+                    properties:
+                      inbound:
+                        description: InboundRouteDefaults configures the fallback
+                          ingress gateway list.
+                        properties:
+                          gateways:
+                            description: Gateways replaces the global list, including
+                              when explicitly empty.
+                            items:
+                              type: string
+                            type: array
+                        type: object
+                    type: object
                   inbound:
                     additionalProperties:
                       x-kubernetes-preserve-unknown-fields: true
@@ -574,7 +590,6 @@ spec:
                     description: Outbound routes configuration
                     type: object
                   prependReleaseName:
-                    description: Prepend release name to route resource names
                     type: boolean
                 type: object
             type: object

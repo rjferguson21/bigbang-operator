@@ -38,7 +38,9 @@ type Input struct {
 	// package-locally then fails with this error: the shared pools could
 	// have held or overridden the name, so falling back silently would be
 	// unsafe.
-	SharedDefinitionsError error
+	SharedDefinitionsError   error
+	SharedIngressConfig      *IngressConfig
+	SharedIngressConfigError error
 }
 
 // Warnings returns human-readable notes about spec fields the generator
@@ -64,6 +66,10 @@ func Generate(in Input) ([]client.Object, error) {
 		return nil, fmt.Errorf("generator: Scheme is nil")
 	}
 
+	inbound, err := resolveInboundRoutes(in)
+	if err != nil {
+		return nil, err
+	}
 	var out []client.Object
 	spec := in.Package.Spec
 
@@ -90,7 +96,7 @@ func Generate(in Input) ([]client.Object, error) {
 	}
 
 	if spec.Routes != nil {
-		objs, err := generateRoutes(in.Package, spec.Routes)
+		objs, err := generateRoutes(in.Package, spec.Routes, inbound)
 		if err != nil {
 			return nil, fmt.Errorf("routes: %w", err)
 		}
@@ -108,10 +114,7 @@ func Generate(in Input) ([]client.Object, error) {
 		out = append(out, aps...)
 	}
 	if spec.Routes != nil {
-		aps, err := generateAuthzFromRoutes(in.Package, spec.Routes, spec.Istio)
-		if err != nil {
-			return nil, fmt.Errorf("authorizationPolicies: %w", err)
-		}
+		aps := generateAuthzFromRoutes(in.Package, spec.Routes, spec.Istio, inbound)
 		out = append(out, aps...)
 	}
 	customAPs, err := generateCustomAuthzPolicies(spec.Istio)

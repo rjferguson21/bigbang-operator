@@ -15,4 +15,12 @@ data:
   ingressDefinitions: |
     {{- toYaml . | nindent 4 }}
   {{- end }}
+  {{- with .Values.globalConfig.routes }}
+  routes: |
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.globalConfig.gateways }}
+  gateways: |
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end }}

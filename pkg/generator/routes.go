@@ -11,6 +11,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bbv1alpha1 "bigbang.dev/operator/api/v1alpha1"
@@ -23,7 +24,7 @@ import (
 // NetworkPolicy. Per outbound route it emits a single ServiceEntry.
 // Per-route AuthorizationPolicies are emitted by generateAuthzFromRoutes,
 // gated on istio.authorizationPolicies.enabled.
-func generateRoutes(pkg *bbv1alpha1.Package, spec *bbv1alpha1.Routes) ([]client.Object, error) {
+func generateRoutes(pkg *bbv1alpha1.Package, spec *bbv1alpha1.Routes, inbound []resolvedInbound) ([]client.Object, error) {
 	if spec == nil {
 		return nil, nil
 	}
@@ -32,24 +33,8 @@ func generateRoutes(pkg *bbv1alpha1.Package, spec *bbv1alpha1.Routes) ([]client.
 	var out []client.Object
 	prepend := spec.PrependReleaseName
 
-	for _, name := range sortedKeys(spec.Inbound) {
-		raw := spec.Inbound[name]
-		route, err := decodeInbound(raw)
-		if err != nil {
-			return nil, fmt.Errorf("routes.inbound.%s: %w", name, err)
-		}
-		if !route.Enabled {
-			continue
-		}
-		// Mirror bb-common's selector inference: when the user omits
-		// `selector`, default to `app.kubernetes.io/name=<route-name>`.
-		// Lets minimal route specs work without restating the obvious.
-		if len(route.Selector) == 0 {
-			route.Selector = map[string]string{"app.kubernetes.io/name": name}
-		}
-		if err := validateInbound(name, route); err != nil {
-			return nil, err
-		}
+	for _, resolved := range inbound {
+		name, route := resolved.name, resolved.route
 		vs, err := buildVirtualService(pkg, prepend, name, route)
 		if err != nil {
 			return nil, err
@@ -57,7 +42,7 @@ func generateRoutes(pkg *bbv1alpha1.Package, spec *bbv1alpha1.Routes) ([]client.
 		out = append(out, vs)
 		out = append(out, buildInboundServiceEntry(pkg, prepend, name, route))
 		if netpolsEnabled {
-			out = append(out, buildInboundNetpols(pkg, prepend, name, route)...)
+			out = append(out, buildInboundNetpols(pkg, prepend, route, resolved.gateways)...)
 		}
 	}
 
@@ -247,13 +232,10 @@ func inboundWorkloadPort(r *bbv1alpha1.InboundRoute) *intstr.IntOrString {
 	return r.Port
 }
 
-func buildInboundNetpols(pkg *bbv1alpha1.Package, prepend bool, _ string, r *bbv1alpha1.InboundRoute) []client.Object {
+func buildInboundNetpols(pkg *bbv1alpha1.Package, prepend bool, r *bbv1alpha1.InboundRoute, gateways []resolvedGateway) []client.Object {
 	out := make([]client.Object, 0, len(r.Gateways))
-	for _, gw := range r.Gateways {
-		gwNS, gwName, ok := splitGateway(gw)
-		if !ok {
-			continue
-		}
+	for _, gw := range gateways {
+		gwNS, gwName := gw.namespace, gw.name
 		port := intstr.FromInt(int(portNumber(inboundWorkloadPort(r))))
 		tcp := corev1.ProtocolTCP
 		out = append(out, &networkingv1.NetworkPolicy{
@@ -271,9 +253,7 @@ func buildInboundNetpols(pkg *bbv1alpha1.Package, prepend bool, _ string, r *bbv
 						NamespaceSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"kubernetes.io/metadata.name": gwNS},
 						},
-						PodSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"app.kubernetes.io/name": gwName},
-						},
+						PodSelector: gw.definition.PodSelector.DeepCopy(),
 					}},
 					Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port}},
 				}},
@@ -367,7 +347,11 @@ func splitGateway(s string) (ns, name string, ok bool) {
 	if i <= 0 || i == len(s)-1 {
 		return "", "", false
 	}
-	return s[:i], s[i+1:], true
+	ns, name = s[:i], s[i+1:]
+	if len(validation.IsDNS1123Label(ns)) != 0 || len(validation.IsDNS1123Subdomain(name)) != 0 {
+		return "", "", false
+	}
+	return ns, name, true
 }
 
 // serviceLeaf strips the FQDN tail from a service value so it works in

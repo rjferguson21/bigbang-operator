@@ -5,6 +5,31 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+// Routes configures inbound and outbound Istio routing.
+type Routes struct {
+	// +optional
+	Defaults *RouteDefaults `json:"defaults,omitempty"`
+	// +optional
+	Inbound RoutesInbound `json:"inbound,omitempty"`
+	// +optional
+	Outbound RoutesOutbound `json:"outbound,omitempty"`
+	// +optional
+	PrependReleaseName bool `json:"prependReleaseName,omitempty"`
+}
+
+// RouteDefaults supplies fallback fields for routes that omit them.
+type RouteDefaults struct {
+	// +optional
+	Inbound *InboundRouteDefaults `json:"inbound,omitempty"`
+}
+
+// InboundRouteDefaults configures the fallback ingress gateway list.
+type InboundRouteDefaults struct {
+	// Gateways replaces the global list, including when explicitly empty.
+	// +optional
+	Gateways []string `json:"gateways"`
+}
+
 // InboundRoute is the typed view of one entry under `routes.inbound.<name>`.
 // The generator decodes the RoutesInbound map values (apiextensionsv1.JSON,
 // because the schema uses patternProperties) into this struct at render
