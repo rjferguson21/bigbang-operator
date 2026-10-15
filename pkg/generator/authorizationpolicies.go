@@ -54,7 +54,7 @@ func authzAllowNothing(istio *bbv1alpha1.Istio) bool {
 	if !authzDefaultsEnabled(istio) {
 		return false
 	}
-	if istio.AuthorizationPolicies == nil {
+	if istio == nil || istio.AuthorizationPolicies == nil {
 		return true
 	}
 	d := istio.AuthorizationPolicies.Defaults
@@ -68,7 +68,7 @@ func authzAllowAllInNS(istio *bbv1alpha1.Istio) bool {
 	if !authzDefaultsEnabled(istio) {
 		return false
 	}
-	if istio.AuthorizationPolicies == nil {
+	if istio == nil || istio.AuthorizationPolicies == nil {
 		return true
 	}
 	d := istio.AuthorizationPolicies.Defaults
@@ -317,40 +317,42 @@ func buildAuthzFromShorthand(pkg *bbv1alpha1.Package, prepend bool, local *parse
 // `istio.authorizationPolicies.enabled` (or `istio.ambient.enabled`).
 // Independent of `generateFromNetpol` — that flag only governs the shorthand
 // fan-out, not per-route policies.
-func generateAuthzFromRoutes(pkg *bbv1alpha1.Package, routes *bbv1alpha1.Routes, istio *bbv1alpha1.Istio) ([]client.Object, error) {
+func generateAuthzFromRoutes(pkg *bbv1alpha1.Package, routes *bbv1alpha1.Routes, istio *bbv1alpha1.Istio, inbound []resolvedInbound) []client.Object {
 	if !authzEnabled(istio) || routes == nil {
-		return nil, nil
+		return nil
 	}
-
-	var out []client.Object
-	for _, name := range sortedKeys(routes.Inbound) {
-		route, err := decodeInbound(routes.Inbound[name])
-		if err != nil {
-			return nil, fmt.Errorf("authz routes.inbound.%s: %w", name, err)
-		}
-		if !route.Enabled {
-			continue
-		}
-		for _, gw := range route.Gateways {
-			gwNS, gwName, ok := splitGateway(gw)
-			if !ok {
-				continue
+	// Qualify colliding gateway names while preserving existing resource names.
+	namespaces := map[string]map[string]bool{}
+	for _, resolved := range inbound {
+		for _, gw := range resolved.gateways {
+			if namespaces[gw.name] == nil {
+				namespaces[gw.name] = map[string]bool{}
 			}
-			out = append(out, buildAuthzFromRoute(pkg, routes.PrependReleaseName, route, gwNS, gwName))
+			namespaces[gw.name][gw.namespace] = true
 		}
 	}
-	return out, nil
+	var out []client.Object
+	for _, resolved := range inbound {
+		for _, gw := range resolved.gateways {
+			suffix := gw.name
+			if len(namespaces[gw.name]) > 1 {
+				suffix = gw.namespace + "-" + gw.name
+			}
+			out = append(out, buildAuthzFromRoute(pkg, routes.PrependReleaseName, resolved.route, gw, suffix))
+		}
+	}
+	return out
 }
 
-func buildAuthzFromRoute(pkg *bbv1alpha1.Package, prepend bool, route *bbv1alpha1.InboundRoute, gwNS, gwName string) *istiosecv1.AuthorizationPolicy {
-	apName := prependName(prepend, pkg.Name, fmt.Sprintf("%s-%s-authz-policy", serviceLeaf(route.Service), gwName))
+func buildAuthzFromRoute(pkg *bbv1alpha1.Package, prepend bool, route *bbv1alpha1.InboundRoute, gw resolvedGateway, suffix string) *istiosecv1.AuthorizationPolicy {
+	apName := prependName(prepend, pkg.Name, fmt.Sprintf("%s-%s-authz-policy", serviceLeaf(route.Service), suffix))
 
 	rule := &istiosecv1beta1.Rule{
 		From: []*istiosecv1beta1.Rule_From{{
 			Source: &istiosecv1beta1.Source{
 				Principals: []string{fmt.Sprintf(
-					"cluster.local/ns/%s/sa/%s-ingressgateway-service-account",
-					gwNS, gwName)},
+					"cluster.local/ns/%s/sa/%s",
+					gw.namespace, gw.definition.ServiceAccountName)},
 			},
 		}},
 	}

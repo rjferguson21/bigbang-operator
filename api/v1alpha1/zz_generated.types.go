@@ -526,19 +526,6 @@ const NetworkPoliciesIngressDefinitionsValuePortsElemProtocolUDP NetworkPolicies
 // Ingress rules to local pods
 type NetworkPoliciesIngressTo map[string]apiextensionsv1.JSON
 
-// Istio VirtualService and gateway configuration for routing traffic to
-// applications
-type Routes struct {
-	// Inbound routes configuration
-	Inbound RoutesInbound `json:"inbound,omitempty"`
-
-	// Outbound routes configuration
-	Outbound RoutesOutbound `json:"outbound,omitempty"`
-
-	// Prepend release name to route resource names
-	PrependReleaseName bool `json:"prependReleaseName,omitempty"`
-}
-
 // Inbound routes configuration
 type RoutesInbound map[string]apiextensionsv1.JSON
 

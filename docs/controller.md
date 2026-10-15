@@ -68,7 +68,8 @@ its lookup returns nothing.
 
 ## Global config watch
 
-Shared egress/ingress definitions live in the `bigbang-operator-global` ConfigMap
+Shared egress/ingress definitions, ingress defaults, and gateway definitions
+live in the `bigbang-operator-global` ConfigMap
 (see [global-config.md](global-config.md)).
 The controller watches that single object — the informer is field-selected
 to its name and namespace, so no cluster-wide ConfigMap cache — and any

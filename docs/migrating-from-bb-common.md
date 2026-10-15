@@ -57,7 +57,7 @@ Account for these differences when migrating:
 | `defaultsAsHooks` | emits Helm-hook copies of default policies | supported through the shared Helm helper; direct Packages warn |
 | Helm templating in route `hosts`/`service` (`{{ .Values.domain }}`) | supported via `tpl` | shared Helm helper evaluates `tpl`; direct Packages need resolved strings |
 | De-duplication | identical kind/name collisions renamed `-deduped-N` | not implemented; SSA makes a collision last-write-wins |
-| Gateway netpol pod selector | `app.kubernetes.io/name` + `istio: ingressgateway` | `app.kubernetes.io/name` only (equivalent on real Big Bang gateways, where both labels are present) |
+| Gateway selector and identity | derived from gateway naming conventions | configurable through shared [gateway definitions](routes.md#gateway-defaults-and-identities); legacy fallback uses `app.kubernetes.io/name` only |
 | Proto zero values | writes `action: ALLOW`, `location: MESH_EXTERNAL`, `resolution: NONE` explicitly | omits them (they are proto defaults); Istio behavior identical |
 | `selfTest` | Helm template self-test harness | not applicable |
 | `kubeAPI` definition ports | render-time `lookup` | reconcile-time lookup of the same Service; identical result, but stays current if the Service changes |

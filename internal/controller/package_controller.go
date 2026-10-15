@@ -106,15 +106,11 @@ func (r *PackageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	sharedEgress, sharedIngress, sharedErr := r.sharedDefinitions(ctx)
-	desired, err := generator.Generate(generator.Input{
-		Package:                  &pkg,
-		Scheme:                   r.Scheme,
-		KubeAPIPorts:             r.kubeAPIPorts(ctx, &pkg),
-		SharedEgressDefinitions:  sharedEgress,
-		SharedIngressDefinitions: sharedIngress,
-		SharedDefinitionsError:   sharedErr,
-	})
+	input := r.sharedConfig(ctx)
+	input.Package = &pkg
+	input.Scheme = r.Scheme
+	input.KubeAPIPorts = r.kubeAPIPorts(ctx, &pkg)
+	desired, err := generator.Generate(input)
 	if err != nil {
 		reconcileTotal.WithLabelValues(pkg.Namespace, pkg.Name, outcomeGenerationFailed).Inc()
 		return r.markFailed(ctx, &pkg, "GenerationFailed", err)
@@ -174,34 +170,27 @@ func (r *PackageReconciler) kubeAPIPorts(ctx context.Context, pkg *bbv1alpha1.Pa
 	return ports
 }
 
-// sharedDefinitions fetches and parses the operator's global ConfigMap.
-// Feature disabled or ConfigMap absent → all nil. A fetch or parse failure
-// is returned as the error so the generator can fail resolution precisely
-// where the shared pools would have been consulted.
-func (r *PackageReconciler) sharedDefinitions(ctx context.Context) (
-	map[string]bbv1alpha1.NetworkPoliciesEgressDefinitionsValue,
-	map[string]bbv1alpha1.NetworkPoliciesIngressDefinitionsValue,
-	error,
-) {
+// sharedConfig fetches the global ConfigMap once, retaining independent errors
+// for network-policy definitions and ingress route configuration.
+func (r *PackageReconciler) sharedConfig(ctx context.Context) generator.Input {
+	var in generator.Input
 	if r.GlobalConfigNamespace == "" || r.GlobalConfigName == "" {
-		return nil, nil, nil
+		return in
 	}
 	var cm corev1.ConfigMap
 	if err := r.Get(ctx, types.NamespacedName{Namespace: r.GlobalConfigNamespace, Name: r.GlobalConfigName}, &cm); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil, nil
+		if !apierrors.IsNotFound(err) {
+			in.SharedDefinitionsError = fmt.Errorf("get global config %s/%s: %w", r.GlobalConfigNamespace, r.GlobalConfigName, err)
+			in.SharedIngressConfigError = in.SharedDefinitionsError
 		}
-		return nil, nil, fmt.Errorf("get global config %s/%s: %w", r.GlobalConfigNamespace, r.GlobalConfigName, err)
+		return in
 	}
-	egress, err := generator.ParseSharedEgressDefinitions(cm.Data[generator.GlobalConfigEgressKey])
-	if err != nil {
-		return nil, nil, err
+	in.SharedEgressDefinitions, in.SharedDefinitionsError = generator.ParseSharedEgressDefinitions(cm.Data[generator.GlobalConfigEgressKey])
+	if in.SharedDefinitionsError == nil {
+		in.SharedIngressDefinitions, in.SharedDefinitionsError = generator.ParseSharedIngressDefinitions(cm.Data[generator.GlobalConfigIngressKey])
 	}
-	ingress, err := generator.ParseSharedIngressDefinitions(cm.Data[generator.GlobalConfigIngressKey])
-	if err != nil {
-		return nil, nil, err
-	}
-	return egress, ingress, nil
+	in.SharedIngressConfig, in.SharedIngressConfigError = generator.ParseIngressConfig(cm.Data[generator.GlobalConfigRoutesKey], cm.Data[generator.GlobalConfigGatewaysKey])
+	return in
 }
 
 // packagesForGlobalConfig enqueues every Package when the global ConfigMap

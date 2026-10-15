@@ -11,7 +11,7 @@ GHCR by the release pipeline:
 ```sh
 helm install bigbang-operator \
   oci://ghcr.io/rjferguson21/charts/bigbang-operator \
-  --version 0.4.0-bb.0 \
+  --version 0.5.0-bb.0 \
   --namespace bigbang-operator --create-namespace
 ```
 
@@ -39,7 +39,7 @@ For Iron Bank-hardened deploys, override the image repository instead:
 ```sh
 helm install bigbang-operator \
   oci://ghcr.io/rjferguson21/charts/bigbang-operator \
-  --version 0.4.0-bb.0 \
+  --version 0.5.0-bb.0 \
   --namespace bigbang-operator --create-namespace \
   --set image.repository=registry1.dso.mil/ironbank/big-bang/bigbang-operator
 ```
@@ -75,6 +75,8 @@ helm install bigbang-operator \
 | `globalConfig.create` | `false` | render the ConfigMap from this chart |
 | `globalConfig.egressDefinitions` | `{}` | shared egress definitions (see [global-config.md](global-config.md)) |
 | `globalConfig.ingressDefinitions` | `{}` | shared ingress definitions |
+| `globalConfig.routes` | `{}` | shared `defaults.inbound.gateways` |
+| `globalConfig.gateways` | `{}` | gateway references mapped to pod selectors and ServiceAccounts |
 | `podSecurityContext` / `containerSecurityContext` | restricted (non-root, no privilege escalation, all caps dropped, read-only rootfs) | |
 | `nodeSelector` / `tolerations` / `affinity` | empty | standard scheduling knobs |
 

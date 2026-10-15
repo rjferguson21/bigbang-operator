@@ -62,8 +62,6 @@ spec:
   rules:
     - from:
         - source:
-            namespaces:
-              - istio-gateway
             principals:
               - cluster.local/ns/istio-gateway/sa/public-ingressgateway-ingressgateway-service-account
       to:
@@ -72,8 +70,14 @@ spec:
               - "<route port>"
 ```
 
-The ServiceAccount follows Big Bang's gateway naming convention
-(`<gateway-name>-ingressgateway-service-account`).
+By default the ServiceAccount follows the legacy naming convention
+(`<gateway-name>-ingressgateway-service-account`). A
+[shared gateway definition](routes.md#gateway-defaults-and-identities)
+overrides it with `serviceAccountName` in the gateway reference's namespace.
+The effective gateway list and inferred workload selector are shared with
+VirtualService and NetworkPolicy generation. The destination port is
+`containerPort` when set, otherwise `port`. These identity and port rules
+also work with ambient L4 authorization.
 
 ## 4. Custom policies
 

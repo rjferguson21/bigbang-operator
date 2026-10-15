@@ -28,6 +28,76 @@ One inbound route emits up to four kinds of resources:
 | `NetworkPolicy` | `allow-ingress-to-my-app-8080-from-ns-istio-gateway-pod-public-ingressgateway` (one per gateway) | `networkPolicies.enabled: true` |
 | `AuthorizationPolicy` | `my-app-public-ingressgateway-authz-policy` (one per gateway) | `istio.authorizationPolicies.enabled` or ambient — see [authorization-policies.md](authorization-policies.md) |
 
+### Gateway defaults and identities
+
+Set `routes.defaults.inbound.gateways` on a Package to avoid repeating the
+list on every route:
+
+```yaml
+spec:
+  routes:
+    defaults:
+      inbound:
+        gateways:
+          - istio-gateway/public-ingressgateway
+    inbound:
+      dashboard:
+        enabled: true
+        hosts: [dashboard.example.com]
+        service: dashboard
+        port: 80
+        containerPort: 3000
+```
+
+Gateway lists resolve in this order, replacing the whole list:
+
+1. The route's `gateways`.
+2. Package `routes.defaults.inbound.gateways`.
+3. Global `routes.defaults.inbound.gateways`.
+
+Omitted or null lists inherit; an explicit empty list overrides the lower
+level and fails validation on an enabled route. Disabled routes need no
+gateway. The resolved list is used by the VirtualService and both policy
+types, including routes using TLS passthrough or advanced HTTP rules.
+
+Configure gateway workload labels and identities in the operator's
+[global config](global-config.md#ingress-gateways). For example, operator
+chart values for an upstream Istio gateway using its default ServiceAccount:
+
+```yaml
+globalConfig:
+  create: true
+  routes:
+    defaults:
+      inbound:
+        gateways: [istio-gateway/public-ingressgateway]
+  gateways:
+    istio-gateway/public-ingressgateway:
+      podSelector:
+        matchLabels:
+          app: public-ingressgateway
+      serviceAccountName: public-ingressgateway
+```
+
+The gateway reference remains unchanged in the VirtualService.
+`podSelector` controls the NetworkPolicy peer; `serviceAccountName` controls
+the AuthorizationPolicy principal. Both identify pods in the namespace from
+the gateway reference. The trust domain remains `cluster.local`. Kubernetes
+`matchLabels` and `matchExpressions` are supported; an explicit empty selector
+matches every pod in that namespace. Each definition requires both fields.
+
+Without a definition, legacy behavior is preserved: the pod selector is
+`app.kubernetes.io/name: <gateway-name>` and the identity is
+`cluster.local/ns/<gateway-namespace>/sa/<gateway-name>-ingressgateway-service-account`.
+Defaults alone do not fix an identity mismatch; define the gateway when its
+actual labels or ServiceAccount differ. The operator does not discover or
+create gateway workloads.
+
+Gateway names shared by different namespaces in the same Package use
+namespace-qualified AuthorizationPolicy suffixes to avoid collisions.
+Other existing resource names remain unchanged. This configuration covers
+ingress only; outbound waypoint bindings and egress gateways are unsupported.
+
 ### The ServiceEntry
 
 Registers the route's *public* hostname so `REGISTRY_ONLY` workloads inside
@@ -99,8 +169,8 @@ reconcile instead of applying silently-wrong config.
 
 `routes.inbound` is schema-opaque to the apiserver
 (x-kubernetes-preserve-unknown-fields), so the reconciler validates instead:
-missing `gateways`/`service`/`port`, or a gateway not shaped
-`<namespace>/<name>`, surface as `Ready=False / GenerationFailed` on the
+missing effective `gateways`/`service`/`port`, or a gateway not shaped
+`<namespace>/<name>` with valid Kubernetes names, surface as `Ready=False / GenerationFailed` on the
 Package.
 
 ## Outbound
@@ -131,3 +201,34 @@ Emits one `ServiceEntry` named `external-api-external` (`-internal` when
 
 `routes.prependReleaseName: true` prefixes route resource names with the
 Package name; independent of the istio/networkPolicies flags.
+
+## Ambient integration test
+
+`test/integration/ambient_gateway_test.go` exercises generated routing and
+policies against a live ambient mesh with an existing ingress gateway. It
+creates a temporary namespace and workload, verifies HTTP 200 with the
+configured identity, HTTP 503 with an incorrect identity, then HTTP 200
+after restoration. It cleans up its resources. The generator is invoked
+directly so the test does not replace a running operator; the controller's
+ConfigMap watch is covered separately by envtest.
+
+For a local Big Bang development cluster, set the actual gateway address,
+pod labels, and ServiceAccount:
+
+```sh
+AMBIENT_GATEWAY=istio-gateway/public-ingressgateway \
+AMBIENT_GATEWAY_ADDRESS=https://172.28.0.3 \
+AMBIENT_GATEWAY_SERVICE_ACCOUNT=public-ingressgateway \
+AMBIENT_GATEWAY_SELECTOR='{"matchLabels":{"app":"public-ingressgateway"}}' \
+AMBIENT_GATEWAY_HOST_SUFFIX=dev.bigbang.mil \
+AMBIENT_KYVERNO_EXCEPTION_NAMESPACE=kyverno \
+go test -tags=integration ./test/integration -run TestAmbientGatewayIdentity -count=1 -v
+```
+
+The gateway must serve the hostname suffix and reach the test workload.
+The test skips when required gateway variables are absent. The optional
+Kyverno variable creates a registry-policy exception scoped to the test
+namespace; omit it on clusters without that policy. The workload image
+defaults to `ghcr.io/stefanprodan/podinfo:6.13.0` and can be replaced with a
+compatible image through `AMBIENT_WORKLOAD_IMAGE`. TLS certificate verification
+is disabled for this development-cluster test.
