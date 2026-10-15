@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] (2026-10-15)
+
+### Changed
+
+- Use plain semantic versions for operator images and both Helm charts.
+- Adopt Helm 4.3.1 for CI and release publishing, with installation and migration guidance (#15).
+
+### Added
+
+- Automated OCI publishing round-trip and operator lifecycle validation, including
+  hook ordering, isolation, cleanup, and retries in plain and ambient modes.
+
 ## [0.5.0-bb.0] (2026-10-15)
 
 ### Added

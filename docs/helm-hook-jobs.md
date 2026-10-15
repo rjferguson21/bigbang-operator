@@ -8,14 +8,14 @@ baseline.
 
 ## Integrate a package chart
 
-Install operator version `0.4.0-bb.0` or later and its CRD before installing
+Install operator version `0.5.0` or later and its CRD before installing
 consuming charts. Add this
 dependency to the workload chart:
 
 ```yaml
 dependencies:
   - name: bigbang-operator-package
-    version: 0.4.0-bb.0
+    version: 0.5.0
     repository: oci://ghcr.io/rjferguson21/charts
 ```
 
