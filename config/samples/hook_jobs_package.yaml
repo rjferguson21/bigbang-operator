@@ -1,0 +1,24 @@
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: monitoring-hooks
+  namespace: monitoring
+spec:
+  networkPolicies:
+    enabled: true
+    prependReleaseName: true
+    ingress:
+      defaults:
+        enabled: false
+    egress:
+      defaults:
+        enabled: false
+      from:
+        admission-hooks:
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: monitoring
+              app.kubernetes.io/component: prometheus-operator-webhook
+          to:
+            definition:
+              kubeAPI: true

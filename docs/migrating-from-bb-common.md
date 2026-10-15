@@ -50,7 +50,7 @@ spec:
 
 ## Known divergences
 
-Deliberate, and unlikely to matter — listed so nothing surprises you:
+Account for these differences when migrating:
 
 | Area | bb-common | operator |
 |---|---|---|
@@ -69,8 +69,10 @@ Deliberate, and unlikely to matter — listed so nothing surprises you:
 2. Replace any templated hostnames with literals (or a kustomize/GitOps
    substitution).
 3. If you used `literal` rules or shorthand `metadata`, they work as-is.
-4. If you set `defaultsAsHooks`, drop it — expect the Warning event until
-   you do.
+4. If you set `defaultsAsHooks`, arrange [hook Job connectivity](helm-hook-jobs.md)
+   before removing it: prepare policies in an earlier deployment stage or
+   retain chart-owned hook policies. Expect the Warning event until you
+   remove the unsupported setting.
 5. Apply, then check `kubectl get package <name>` for `Ready=True` and
    diff the emitted resources against your previous Helm render if you want
    belt-and-suspenders.

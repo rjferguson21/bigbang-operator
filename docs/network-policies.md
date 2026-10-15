@@ -250,6 +250,12 @@ are generated from bb-common's schema) but **ignored**, and a Package that
 sets `defaultsAsHooks.enabled: true` gets a Warning event
 (`UnsupportedField`) so the no-op is never silent.
 
+For Jobs that need API access during Helm hooks, see
+[Helm hook Jobs](helm-hook-jobs.md) for a pre-created Package and a
+chart-owned hook policy alternative. A Package created as a regular
+resource in the workload release cannot prepare policies for pre-install
+Jobs in that release.
+
 ## Labels on generated policies
 
 Every generated NetworkPolicy carries:
