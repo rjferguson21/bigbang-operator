@@ -54,6 +54,9 @@ func authzAllowNothing(istio *bbv1alpha1.Istio) bool {
 	if !authzDefaultsEnabled(istio) {
 		return false
 	}
+	if istio.AuthorizationPolicies == nil {
+		return true
+	}
 	d := istio.AuthorizationPolicies.Defaults
 	if d == nil || d.DenyAll == nil {
 		return true
@@ -64,6 +67,9 @@ func authzAllowNothing(istio *bbv1alpha1.Istio) bool {
 func authzAllowAllInNS(istio *bbv1alpha1.Istio) bool {
 	if !authzDefaultsEnabled(istio) {
 		return false
+	}
+	if istio.AuthorizationPolicies == nil {
+		return true
 	}
 	d := istio.AuthorizationPolicies.Defaults
 	if d == nil || d.AllowInNamespace == nil {

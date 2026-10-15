@@ -35,6 +35,11 @@ jobs:
 
       # Re-runs manifests + generate + fmt + vet + setup-envtest before the
       # tests, then exercises the generator goldens and the controller envtest.
+      - name: Install Helm for integration rendering tests
+        uses: azure/setup-helm@v4
+        with:
+          version: v4.1.0
+
       - name: Run tests
         run: make test
 

@@ -29,3 +29,5 @@ go.work
 # Kubeconfig might contain secrets
 *.kubeconfig
 site/
+
+/test/integration/fixtures/hook-networking/charts/

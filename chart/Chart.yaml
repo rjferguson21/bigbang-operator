@@ -2,8 +2,8 @@ apiVersion: v2
 name: bigbang-operator
 description: Operator that reconciles Big Bang Package CRs into istio + NetworkPolicy resources.
 type: application
-version: 0.3.2
-appVersion: "0.3.2"
+version: 0.4.0-bb.0
+appVersion: "0.4.0-bb.0"
 keywords:
   - bigbang
   - operator
@@ -13,3 +13,9 @@ sources:
   - https://repo1.dso.mil/big-bang/product/packages/bigbang-operator
 maintainers:
   - name: Big Bang
+annotations:
+  bigbang.dev/applicationVersions: |
+    - bigbang-operator: 0.4.0-bb.0
+  helm.sh/images: |
+    - name: bigbang-operator
+      image: ghcr.io/rjferguson21/bigbang-operator:0.4.0-bb.0

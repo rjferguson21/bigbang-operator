@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0-bb.0] (2026-10-15)
+
+### Added
+
+- Shared Helm library that renders hook NetworkPolicies using bb-common from the
+  same declarations as persistent Package policies (#12).
+- Operator cleanup of hook policies after successful operations and expiration
+  after failures, with release isolation and protection against stale cleanup.
+
+### Fixed
+
+- Ambient default AuthorizationPolicy generation when authorization policy
+  settings are omitted.
+
 ## [0.3.2] (2026-10-10)
 
 ### Fixed

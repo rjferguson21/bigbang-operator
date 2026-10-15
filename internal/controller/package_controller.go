@@ -33,6 +33,7 @@ import (
 
 	bbv1alpha1 "bigbang.dev/operator/api/v1alpha1"
 	"bigbang.dev/operator/pkg/generator"
+	"bigbang.dev/operator/pkg/helmhooks"
 )
 
 // fieldManager is the SSA owner identifier used for every applied object.
@@ -82,6 +83,10 @@ func (r *PackageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if !pkg.DeletionTimestamp.IsZero() {
 		// GC via owner references handles cleanup. No finalizer in v1.
 		return ctrl.Result{}, nil
+	}
+
+	if pkg.Annotations[helmhooks.Action] == "cleanup" {
+		return r.cleanupHookPolicies(ctx, &pkg)
 	}
 
 	if pkg.Generation != pkg.Status.ObservedGeneration {
@@ -228,6 +233,9 @@ func (r *PackageReconciler) applyAll(ctx context.Context, desired []client.Objec
 }
 
 func (r *PackageReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := (&HookPolicyReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+		return err
+	}
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&bbv1alpha1.Package{}).
 		Owns(&networkingv1.NetworkPolicy{}).

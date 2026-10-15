@@ -50,12 +50,12 @@ spec:
 
 ## Known divergences
 
-Deliberate, and unlikely to matter — listed so nothing surprises you:
+Account for these differences when migrating:
 
 | Area | bb-common | operator |
 |---|---|---|
-| `defaultsAsHooks` | emits Helm-hook copies of default policies | ignored + Warning event; hooks have no operator equivalent |
-| Helm templating in route `hosts`/`service` (`{{ .Values.domain }}`) | supported via `tpl` | literal strings only; substitute via GitOps/kustomize before apply |
+| `defaultsAsHooks` | emits Helm-hook copies of default policies | supported through the shared Helm helper; direct Packages warn |
+| Helm templating in route `hosts`/`service` (`{{ .Values.domain }}`) | supported via `tpl` | shared Helm helper evaluates `tpl`; direct Packages need resolved strings |
 | De-duplication | identical kind/name collisions renamed `-deduped-N` | not implemented; SSA makes a collision last-write-wins |
 | Gateway netpol pod selector | `app.kubernetes.io/name` + `istio: ingressgateway` | `app.kubernetes.io/name` only (equivalent on real Big Bang gateways, where both labels are present) |
 | Proto zero values | writes `action: ALLOW`, `location: MESH_EXTERNAL`, `resolution: NONE` explicitly | omits them (they are proto defaults); Istio behavior identical |
@@ -66,11 +66,12 @@ Deliberate, and unlikely to matter — listed so nothing surprises you:
 
 1. Move your `networkPolicies:` / `istio:` / `routes:` values under a
    Package's `spec:`.
-2. Replace any templated hostnames with literals (or a kustomize/GitOps
-   substitution).
+2. For directly applied Packages, replace templated hostnames with literals
+   (or a kustomize/GitOps substitution). The shared Helm helper evaluates them.
 3. If you used `literal` rules or shorthand `metadata`, they work as-is.
-4. If you set `defaultsAsHooks`, drop it — expect the Warning event until
-   you do.
+4. For Helm-managed packages, use the [shared Helm helper](helm-hook-jobs.md).
+   Keep `defaultsAsHooks` and per-rule hook metadata; the helper renders hook
+   policies while the operator reconciles persistent policies.
 5. Apply, then check `kubectl get package <name>` for `Ready=True` and
    diff the emitted resources against your previous Helm render if you want
    belt-and-suspenders.

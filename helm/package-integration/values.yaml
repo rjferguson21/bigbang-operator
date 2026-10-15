@@ -1,0 +1,5 @@
+bb-common:
+  networkPolicies:
+    enabled: false
+  istio:
+    enabled: false

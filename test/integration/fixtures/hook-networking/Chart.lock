@@ -1,0 +1,6 @@
+dependencies:
+- name: bigbang-operator-package
+  repository: file://../../../../helm/package-integration
+  version: 0.4.0-bb.0
+digest: sha256:0459abb355a985b9f1a4238eb5282c007ff4f864ad915b121154d4cb6268ef1e
+generated: "2026-10-15T14:33:39.288804078-05:00"
