@@ -44,5 +44,6 @@ nav:
       - Istio: istio.md
       - Global Configuration: global-config.md
   - Reference:
+      - Development: development.md
       - Controller Behavior: controller.md
       - Migrating from bb-common: migrating-from-bb-common.md

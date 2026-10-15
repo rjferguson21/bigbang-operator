@@ -8,6 +8,10 @@ GHCR by the release pipeline:
 
 ## Install with Helm
 
+Helm 4 is the supported CLI baseline; CI and release publishing use **4.3.1**.
+Check your client with `helm version --short` before installing. The chart remains
+`apiVersion: v2`, and its OCI coordinates are unchanged.
+
 ```sh
 helm install bigbang-operator \
   oci://ghcr.io/rjferguson21/charts/bigbang-operator \
@@ -43,6 +47,26 @@ helm install bigbang-operator \
   --namespace bigbang-operator --create-namespace \
   --set image.repository=registry1.dso.mil/ironbank/big-bang/bigbang-operator
 ```
+
+## Moving from Helm 3
+
+Existing Helm 3 releases can be upgraded in place with Helm 4; retain their release
+name, namespace, and values. Helm 4 preserves the previous apply strategy for
+upgrades and rollbacks, while new installs default to server-side apply.
+
+When readiness matters, use `--wait=watcher`. Without an explicit wait strategy,
+Helm waits for hooks only. Package reconciliation is asynchronous: also use
+`kubectl wait package/<name> -n <namespace> --for=condition=Ready --timeout=120s`
+when subsequent work depends on generated policies.
+
+External scripts should replace deprecated `--atomic` with `--rollback-on-failure`
+and `--force` with `--force-replace`. Registry login takes the hostname (`ghcr.io`),
+without `https://` or `oci://`. Review custom plugins and post-renderers against
+the [Helm 4 migration guidance](https://helm.sh/docs/overview/).
+
+The [Helm hook integration](helm-hook-jobs.md) is tested with Helm 4. Existing
+installations do not need to be uninstalled to change the CLI version; uninstall
+removes the Package CRD and its instances, as described below.
 
 ## Helm chart reference
 

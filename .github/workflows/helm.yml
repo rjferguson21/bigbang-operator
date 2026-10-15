@@ -1,0 +1,32 @@
+name: Helm 4
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: helm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  helm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.3.1
+      - name: Install k3d
+        run: |
+          curl -fsSL https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64 -o /tmp/k3d
+          curl -fsSL https://github.com/k3d-io/k3d/releases/download/v5.8.3/checksums.txt -o /tmp/k3d-checksums.txt
+          expected=$(awk '$2 == "_dist/k3d-linux-amd64" {print $1}' /tmp/k3d-checksums.txt)
+          echo "$expected  /tmp/k3d" | sha256sum --check
+          sudo install /tmp/k3d /usr/local/bin/k3d
+      - name: Validate charts and Helm lifecycles
+        run: make test-helm
