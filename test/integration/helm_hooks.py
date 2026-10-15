@@ -11,6 +11,7 @@ from pathlib import Path
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--kubeconfig", required=True)
 parser.add_argument("--mode", choices=["both", "plain", "ambient"], default="both")
+parser.add_argument("--library-chart", type=Path, help="packaged library chart to test instead of local source")
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[2]
 
@@ -75,7 +76,11 @@ with tempfile.TemporaryDirectory(prefix="helm-hook-test-") as temporary:
     chart = Path(temporary) / "chart"
     shutil.copytree(root / "test/integration/fixtures/hook-networking", chart,
                     ignore=shutil.ignore_patterns("charts"))
-    shutil.copytree(root / "helm/package-integration", chart / "charts/bigbang-operator-package")
+    if args.library_chart:
+        (chart / "charts").mkdir()
+        shutil.copyfile(args.library_chart, chart / "charts" / args.library_chart.name)
+    else:
+        shutil.copytree(root / "helm/package-integration", chart / "charts/bigbang-operator-package")
     for ambient in (False, True):
         if args.mode != "both" and (args.mode == "ambient") != ambient:
             continue

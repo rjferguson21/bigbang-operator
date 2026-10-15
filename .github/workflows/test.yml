@@ -38,7 +38,7 @@ jobs:
       - name: Install Helm for integration rendering tests
         uses: azure/setup-helm@v4
         with:
-          version: v4.1.0
+          version: v4.3.1
 
       - name: Run tests
         run: make test

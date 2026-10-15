@@ -1,3 +1,11 @@
+# Helm 4 chart and lifecycle validation
+
+Run `make test-helm` with Docker, k3d 5.8.3, kubectl, Python 3, curl, and Helm
+4.3.1 available. It creates a temporary registry and k3d cluster, installs Istio
+ambient, builds the operator, and runs both chart and hook lifecycle tests.
+The current kubeconfig is not changed. Its cluster, registry, and test image are
+removed on exit. See [development](../../docs/development.md) for coverage.
+
 # Helm hook lifecycle test
 
 Use a disposable cluster with NetworkPolicy enforcement, Istio ambient, and the

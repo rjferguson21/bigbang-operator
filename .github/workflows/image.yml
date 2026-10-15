@@ -86,7 +86,7 @@ jobs:
       - name: Install helm
         uses: azure/setup-helm@v4
         with:
-          version: v3.16.3
+          version: v4.3.1
 
       - name: Log in to GHCR (helm)
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
