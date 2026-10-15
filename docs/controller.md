@@ -83,10 +83,16 @@ Spec fields that are accepted but deliberately not honored produce a Warning
 event on the Package rather than a silent no-op:
 
 ```
-Warning  UnsupportedField  networkPolicies.defaultsAsHooks is ignored: Helm hooks
-                           have no operator equivalent (default policies are applied
-                           and kept in sync continuously)
+Warning  UnsupportedField  networkPolicies.defaultsAsHooks requires the shared
+                           bigbang-operator.package Helm helper; the controller
+                           only reconciles persistent policies
 ```
+
+Packages rendered by the [shared Helm helper](helm-hook-jobs.md) do not emit
+this warning. A separate NetworkPolicy reconciler expires Helm hook policies;
+cleanup Package hooks request earlier removal after successful operations.
+Neither path adopts or rewrites Helm's policy specifications, and both reuse
+the operator's existing RBAC permissions.
 
 ## Metrics
 

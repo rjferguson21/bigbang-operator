@@ -243,18 +243,13 @@ HBONE skip (the HBONE pass sees these too).
 
 ## defaultsAsHooks
 
-bb-common can emit Helm-hook copies of the default policies for install
-ordering. Helm hooks have no operator equivalent — the operator applies and
-repairs policies continuously — so these fields are accepted (the CRD types
-are generated from bb-common's schema) but **ignored**, and a Package that
-sets `defaultsAsHooks.enabled: true` gets a Warning event
-(`UnsupportedField`) so the no-op is never silent.
+The shared `bigbang-operator.package` Helm helper supports `defaultsAsHooks`
+and per-rule hook annotations using bb-common's renderer. Helm creates temporary
+hook policies before dependent Jobs; the operator reconciles persistent
+policies and handles temporary-policy cleanup. See [Helm hook networking](helm-hook-jobs.md).
 
-For Jobs that need API access during Helm hooks, see
-[Helm hook Jobs](helm-hook-jobs.md) for a pre-created Package and a
-chart-owned hook policy alternative. A Package created as a regular
-resource in the workload release cannot prepare policies for pre-install
-Jobs in that release.
+A directly applied Package cannot establish Helm ordering. Without the shared
+helper, `defaultsAsHooks.enabled: true` produces an `UnsupportedField` warning.
 
 ## Labels on generated policies
 

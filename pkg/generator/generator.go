@@ -5,12 +5,15 @@ package generator
 
 import (
 	"fmt"
+	"maps"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bbv1alpha1 "bigbang.dev/operator/api/v1alpha1"
+	"bigbang.dev/operator/pkg/helmhooks"
 )
 
 // Input describes one Package to render.
@@ -45,8 +48,8 @@ type Input struct {
 func Warnings(pkg *bbv1alpha1.Package) []string {
 	var out []string
 	np := pkg.Spec.NetworkPolicies
-	if np != nil && np.DefaultsAsHooks != nil && np.DefaultsAsHooks.Enabled != nil && *np.DefaultsAsHooks.Enabled {
-		out = append(out, "networkPolicies.defaultsAsHooks is ignored: Helm hooks have no operator equivalent (default policies are applied and kept in sync continuously)")
+	if pkg.Annotations[helmhooks.Integration] != helmhooks.Enabled && np != nil && np.DefaultsAsHooks != nil && np.DefaultsAsHooks.Enabled != nil && *np.DefaultsAsHooks.Enabled {
+		out = append(out, "networkPolicies.defaultsAsHooks requires the shared bigbang-operator.package Helm helper; the controller only reconciles persistent policies")
 	}
 	return out
 }
@@ -124,6 +127,15 @@ func Generate(in Input) ([]client.Object, error) {
 	}
 
 	for _, o := range out {
+		if pkg := in.Package; pkg.Annotations[helmhooks.Integration] == helmhooks.Enabled {
+			annotations := maps.Clone(o.GetAnnotations())
+			for key := range annotations {
+				if strings.HasPrefix(key, "helm.sh/hook") {
+					delete(annotations, key)
+				}
+			}
+			o.SetAnnotations(annotations)
+		}
 		stampMetadata(in.Package, o)
 		if err := setGVK(in.Scheme, o); err != nil {
 			return nil, err
