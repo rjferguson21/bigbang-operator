@@ -15,7 +15,7 @@ Check your client with `helm version --short` before installing. The chart remai
 ```sh
 helm install bigbang-operator \
   oci://ghcr.io/rjferguson21/charts/bigbang-operator \
-  --version 0.5.0-bb.0 \
+  --version 0.5.0 \
   --namespace bigbang-operator --create-namespace
 ```
 
@@ -43,7 +43,7 @@ For Iron Bank-hardened deploys, override the image repository instead:
 ```sh
 helm install bigbang-operator \
   oci://ghcr.io/rjferguson21/charts/bigbang-operator \
-  --version 0.5.0-bb.0 \
+  --version 0.5.0 \
   --namespace bigbang-operator --create-namespace \
   --set image.repository=registry1.dso.mil/ironbank/big-bang/bigbang-operator
 ```
