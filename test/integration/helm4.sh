@@ -37,12 +37,11 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-helm lint chart helm/package-integration
+helm lint chart
 helm template operator chart > "$test_dir/operator.yaml"
 mkdir -p "$test_dir/packages" "$test_dir/pulled"
 helm package chart -d "$test_dir/packages"
 version=$(helm show chart chart | sed -n 's/^version: //p')
-helm package helm/package-integration --version "$version" -d "$test_dir/packages"
 
 docker run -d --name "$registry" -p 127.0.0.1::5000 registry:2.8.3 >/dev/null
 registry_created=true
@@ -53,15 +52,12 @@ for attempt in {1..30}; do
 done
 curl -fsS "http://$address/v2/" >/dev/null
 # Match the release workflow's <owner>/charts/<chart-name>:<version> layout.
-for name in bigbang-operator bigbang-operator-package; do
-  helm push "$test_dir/packages/$name-$version.tgz" "oci://$address/rjferguson21/charts" --plain-http
-  helm pull "oci://$address/rjferguson21/charts/$name" --version "$version" --plain-http --destination "$test_dir/pulled"
-  cmp "$test_dir/packages/$name-$version.tgz" "$test_dir/pulled/$name-$version.tgz"
-done
+helm push "$test_dir/packages/bigbang-operator-$version.tgz" "oci://$address/rjferguson21/charts" --plain-http
+helm pull "oci://$address/rjferguson21/charts/bigbang-operator" --version "$version" --plain-http --destination "$test_dir/pulled"
+cmp "$test_dir/packages/bigbang-operator-$version.tgz" "$test_dir/pulled/bigbang-operator-$version.tgz"
 helm template operator "$test_dir/pulled/bigbang-operator-$version.tgz" > "$test_dir/pulled.yaml"
 cmp "$test_dir/operator.yaml" "$test_dir/pulled.yaml"
 
-# k3s supplies NetworkPolicy enforcement for the hook isolation assertions.
 cluster_created=true
 k3d cluster create "$cluster" --image rancher/k3s:v1.35.6-k3s1 --agents 1 \
   --kubeconfig-update-default=false --kubeconfig-switch-context=false \
@@ -70,26 +66,33 @@ k3d kubeconfig get "$cluster" > "$KUBECONFIG"
 
 helm repo add istio https://istio-release.storage.googleapis.com/charts
 helm install istio-base istio/base --version 1.30.4 -n istio-system --create-namespace --wait=watcher
-helm install istiod istio/istiod --version 1.30.4 -n istio-system --set profile=ambient --wait=watcher
-helm install istio-cni istio/cni --version 1.30.4 -n istio-system \
-  --set profile=ambient --set cniBinDir=/var/lib/rancher/k3s/data/cni \
-  --set cniConfDir=/var/lib/rancher/k3s/agent/etc/cni/net.d --wait=watcher
-helm install ztunnel istio/ztunnel --version 1.30.4 -n istio-system --wait=watcher
-
 docker build -t "$image" .
 image_created=true
 k3d image import "$image" -c "$cluster"
 operator_chart="$test_dir/pulled/bigbang-operator-$version.tgz"
 operator_flags=(-n bigbang-operator --set "image.repository=${image%:*}" --set "image.tag=${image##*:}" --wait=watcher --timeout=180s)
 helm install operator "$operator_chart" --create-namespace "${operator_flags[@]}"
+kubectl create namespace package-smoke
+kubectl apply -f - <<'MANIFEST'
+apiVersion: bigbang.dev/v1alpha1
+kind: Package
+metadata:
+  name: smoke
+  namespace: package-smoke
+spec:
+  networkPolicies:
+    enabled: true
+MANIFEST
+kubectl wait -n package-smoke package/smoke --for=condition=Ready --timeout=60s
+policy_uid=$(kubectl -n package-smoke get networkpolicy default-egress-deny-all -o jsonpath='{.metadata.uid}')
 helm upgrade operator "$operator_chart" --set replicas=2 "${operator_flags[@]}"
 [[ $(kubectl -n bigbang-operator get deployment operator-bigbang-operator -o jsonpath='{.spec.replicas}') == 2 ]]
 helm rollback operator 1 -n bigbang-operator --wait=watcher --timeout=180s
 [[ $(kubectl -n bigbang-operator get deployment operator-bigbang-operator -o jsonpath='{.spec.replicas}') == 1 ]]
+[[ $(kubectl -n package-smoke get networkpolicy default-egress-deny-all -o jsonpath='{.metadata.uid}') == "$policy_uid" ]]
 
-python3 test/integration/helm_hooks.py --kubeconfig "$KUBECONFIG" \
-  --library-chart "$test_dir/pulled/bigbang-operator-package-$version.tgz"
 helm uninstall operator -n bigbang-operator --wait=watcher --timeout=180s
 [[ -z $(kubectl get crd packages.bigbang.dev --ignore-not-found -o name) ]]
 [[ -z $(kubectl -n bigbang-operator get deployment operator-bigbang-operator --ignore-not-found -o name) ]]
-echo 'PASS: Helm 4 chart rendering, OCI round-trip, operator lifecycle, and hook lifecycle'
+kubectl wait -n package-smoke --for=delete networkpolicy --all --timeout=60s
+echo 'PASS: Helm 4 chart rendering, OCI round-trip, operator lifecycle'

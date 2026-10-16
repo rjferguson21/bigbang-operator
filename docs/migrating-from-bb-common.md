@@ -54,8 +54,8 @@ Account for these differences when migrating:
 
 | Area | bb-common | operator |
 |---|---|---|
-| `defaultsAsHooks` | emits Helm-hook copies of default policies | supported through the shared Helm helper; direct Packages warn |
-| Helm templating in route `hosts`/`service` (`{{ .Values.domain }}`) | supported via `tpl` | shared Helm helper evaluates `tpl`; direct Packages need resolved strings |
+| `defaultsAsHooks` | emits Helm-hook copies of default policies | ignored with an `UnsupportedField` warning; persistent defaults still reconcile |
+| Helm templating in route `hosts`/`service` (`{{ .Values.domain }}`) | supported via `tpl` | requires resolved strings in the Package spec |
 | De-duplication | identical kind/name collisions renamed `-deduped-N` | not implemented; SSA makes a collision last-write-wins |
 | Gateway selector and identity | derived from gateway naming conventions | configurable through shared [gateway definitions](routes.md#gateway-defaults-and-identities); legacy fallback uses `app.kubernetes.io/name` only |
 | Proto zero values | writes `action: ALLOW`, `location: MESH_EXTERNAL`, `resolution: NONE` explicitly | omits them (they are proto defaults); Istio behavior identical |
@@ -66,12 +66,12 @@ Account for these differences when migrating:
 
 1. Move your `networkPolicies:` / `istio:` / `routes:` values under a
    Package's `spec:`.
-2. For directly applied Packages, replace templated hostnames with literals
-   (or a kustomize/GitOps substitution). The shared Helm helper evaluates them.
+2. Resolve templated hostnames before submitting the Package, using your chart
+   template, literals, or a kustomize/GitOps substitution.
 3. If you used `literal` rules or shorthand `metadata`, they work as-is.
-4. For Helm-managed packages, use the [shared Helm helper](helm-hook-jobs.md).
-   Keep `defaultsAsHooks` and per-rule hook metadata; the helper renders hook
-   policies while the operator reconciles persistent policies.
+4. Remove `defaultsAsHooks` and arrange [hook networking](helm-hook-jobs.md) in
+   the application chart or deployment workflow. Hook annotations on generated
+   resources do not give the operator Helm lifecycle behavior.
 5. Apply, then check `kubectl get package <name>` for `Ready=True` and
    diff the emitted resources against your previous Helm render if you want
    belt-and-suspenders.

@@ -15,7 +15,7 @@ Check your client with `helm version --short` before installing. The chart remai
 ```sh
 helm install bigbang-operator \
   oci://ghcr.io/rjferguson21/charts/bigbang-operator \
-  --version 0.5.0 \
+  --version 0.6.0 \
   --namespace bigbang-operator --create-namespace
 ```
 
@@ -43,7 +43,7 @@ For Iron Bank-hardened deploys, override the image repository instead:
 ```sh
 helm install bigbang-operator \
   oci://ghcr.io/rjferguson21/charts/bigbang-operator \
-  --version 0.5.0 \
+  --version 0.6.0 \
   --namespace bigbang-operator --create-namespace \
   --set image.repository=registry1.dso.mil/ironbank/big-bang/bigbang-operator
 ```
@@ -64,9 +64,11 @@ and `--force` with `--force-replace`. Registry login takes the hostname (`ghcr.i
 without `https://` or `oci://`. Review custom plugins and post-renderers against
 the [Helm 4 migration guidance](https://helm.sh/docs/overview/).
 
-The [Helm hook integration](helm-hook-jobs.md) is tested with Helm 4. Existing
-installations do not need to be uninstalled to change the CLI version; uninstall
+Existing installations do not need to be uninstalled to change the CLI version; uninstall
 removes the Package CRD and its instances, as described below.
+
+For upgrades from the retired helper chart, follow the
+[hook networking migration notes](helm-hook-jobs.md#migrating-from-the-retired-helper).
 
 ## Helm chart reference
 
