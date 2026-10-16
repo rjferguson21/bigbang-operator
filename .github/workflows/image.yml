@@ -108,5 +108,3 @@ jobs:
         run: |
           helm package chart -d dist
           helm push dist/bigbang-operator-*.tgz oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
-          helm package helm/package-integration --version "${GITHUB_REF_NAME#v}" -d dist
-          helm push "dist/bigbang-operator-package-${GITHUB_REF_NAME#v}.tgz" oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts

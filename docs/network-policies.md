@@ -243,13 +243,13 @@ HBONE skip (the HBONE pass sees these too).
 
 ## defaultsAsHooks
 
-The shared `bigbang-operator.package` Helm helper supports `defaultsAsHooks`
-and per-rule hook annotations using bb-common's renderer. Helm creates temporary
-hook policies before dependent Jobs; the operator reconciles persistent
-policies and handles temporary-policy cleanup. See [Helm hook networking](helm-hook-jobs.md).
+`defaultsAsHooks` is accepted for compatibility with bb-common values but has no
+runtime effect. Enabling it produces an `UnsupportedField` warning. Default
+policies are applied and kept in sync continuously.
 
-A directly applied Package cannot establish Helm ordering. Without the shared
-helper, `defaultsAsHooks.enabled: true` produces an `UnsupportedField` warning.
+The operator does not create, order, expire, or clean up Helm hook policies.
+Arrange [hook networking](helm-hook-jobs.md) in the application chart or deployment
+workflow before running dependent Jobs.
 
 ## Labels on generated policies
 

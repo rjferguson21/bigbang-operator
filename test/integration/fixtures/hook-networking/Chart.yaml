@@ -1,7 +1,0 @@
-apiVersion: v2
-name: hook-networking-test
-version: 0.1.0
-dependencies:
-  - name: bigbang-operator-package
-    version: 0.5.0
-    repository: file://../../../../helm/package-integration
