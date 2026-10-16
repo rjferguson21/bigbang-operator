@@ -40,4 +40,4 @@ GHCR authentication and TLS at:
 The test does not publish production versions or require registry credentials.
 The release workflow packages the operator chart with the release version and publishes
 only on version tags. See [installation](installation.md#moving-from-helm-3) for
-CLI migration considerations. Hook networking is managed outside the operator.
+CLI migration considerations.

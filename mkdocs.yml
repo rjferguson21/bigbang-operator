@@ -38,7 +38,6 @@ nav:
   - Installation: installation.md
   - Guides:
       - Network Policies: network-policies.md
-      - Helm Hook Networking: helm-hook-jobs.md
       - Routes: routes.md
       - Authorization Policies: authorization-policies.md
       - Istio: istio.md

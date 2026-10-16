@@ -54,7 +54,6 @@ Account for these differences when migrating:
 
 | Area | bb-common | operator |
 |---|---|---|
-| `defaultsAsHooks` | emits Helm-hook copies of default policies | ignored with an `UnsupportedField` warning; persistent defaults still reconcile |
 | Helm templating in route `hosts`/`service` (`{{ .Values.domain }}`) | supported via `tpl` | requires resolved strings in the Package spec |
 | De-duplication | identical kind/name collisions renamed `-deduped-N` | not implemented; SSA makes a collision last-write-wins |
 | Gateway selector and identity | derived from gateway naming conventions | configurable through shared [gateway definitions](routes.md#gateway-defaults-and-identities); legacy fallback uses `app.kubernetes.io/name` only |
@@ -69,9 +68,6 @@ Account for these differences when migrating:
 2. Resolve templated hostnames before submitting the Package, using your chart
    template, literals, or a kustomize/GitOps substitution.
 3. If you used `literal` rules or shorthand `metadata`, they work as-is.
-4. Remove `defaultsAsHooks` and arrange [hook networking](helm-hook-jobs.md) in
-   the application chart or deployment workflow. Hook annotations on generated
-   resources do not give the operator Helm lifecycle behavior.
-5. Apply, then check `kubectl get package <name>` for `Ready=True` and
+4. Apply, then check `kubectl get package <name>` for `Ready=True` and
    diff the emitted resources against your previous Helm render if you want
    belt-and-suspenders.

@@ -84,8 +84,8 @@ create api --group bigbang --version v1alpha1 --kind Package --namespaced`.
 
 `bb-common/chart/values.schema.json` (JSON Schema draft 2020-12, ~1500 lines)
 is the behavioral spec for `Package.spec`. The operator is free to diverge
-cosmetically from bb-common's output (label ordering, omitted Helm hook
-annotations, etc.) — bb-common is the *spec*, not a golden oracle.
+cosmetically from bb-common's output (e.g. label ordering) — bb-common is the
+*spec*, not a golden oracle.
 
 ### Generation pipeline
 

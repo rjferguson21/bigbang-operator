@@ -39,7 +39,7 @@ edits to a generated resource won't be reverted until the next Package change.
   `additionalPolicies[]` passthrough.
   *Deferred:* shorthand `egress.from.*` / `ingress.to.*` expansion,
   `definitions`, per-default disabling (needs `*bool` markers from
-  schema-to-go), `defaultsAsHooks`.
+  schema-to-go).
 * [`spec.routes`](plan/routes.md) — per inbound route a `VirtualService`,
   paired `ServiceEntry` (`<name>-internal`, `MESH_INTERNAL`), and a
   gateway-permitting `NetworkPolicy` per gateway (when

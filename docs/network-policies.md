@@ -241,16 +241,6 @@ networkPolicies:
 The spec is emitted verbatim — no selector inference, no excludeCIDRs, no
 HBONE skip (the HBONE pass sees these too).
 
-## defaultsAsHooks
-
-`defaultsAsHooks` is accepted for compatibility with bb-common values but has no
-runtime effect. Enabling it produces an `UnsupportedField` warning. Default
-policies are applied and kept in sync continuously.
-
-The operator does not create, order, expire, or clean up Helm hook policies.
-Arrange [hook networking](helm-hook-jobs.md) in the application chart or deployment
-workflow before running dependent Jobs.
-
 ## Labels on generated policies
 
 Every generated NetworkPolicy carries:

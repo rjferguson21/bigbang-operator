@@ -52,9 +52,6 @@ network-policies.bigbang.dev/direction: egress  # or ingress
 Disable a single default with e.g. `networkPolicies.egress.defaults.allowIstiod.enabled: false`,
 or disable all with `networkPolicies.{egress,ingress}.defaults.enabled: false`.
 
-Hook variants (`...-as-hook`) are also created when
-`networkPolicies.defaultsAsHooks.enabled: true`.
-
 Beyond defaults, three shapes generate `NetworkPolicy` resources:
 
 1. **Shorthand egress** — `networkPolicies.egress.from.<src>.to.k8s.<ns>/<pod>[:port]: true`

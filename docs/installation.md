@@ -67,9 +67,6 @@ the [Helm 4 migration guidance](https://helm.sh/docs/overview/).
 Existing installations do not need to be uninstalled to change the CLI version; uninstall
 removes the Package CRD and its instances, as described below.
 
-For upgrades from the retired helper chart, follow the
-[hook networking migration notes](helm-hook-jobs.md#migrating-from-the-retired-helper).
-
 ## Helm chart reference
 
 ### What the chart renders

@@ -84,11 +84,6 @@ group are roughly ordered by recommended sequence (highest first).
   from local key). `0.0.0.0/0` renders as `…-anywhere`. Parsers in
   `pkg/generator/shorthand.go`, builders in `networkpolicies.go`,
   fixture `testdata/{inputs,golden}/with-cidr-shorthand.yaml`.
-- [x] **`defaultsAsHooks`** — Helm hooks have no operator equivalent, so
-  the fields stay accepted (schema-generated types) but a Package that
-  enables them gets a Warning Event (`UnsupportedField`) instead of a
-  silent no-op. `generator.Warnings` + recorder wiring in the controller;
-  envtest `TestReconcile_DefaultsAsHooksWarning`.
 - [x] **`hbonePortInjection`** — post-pass that appends TCP/15008 to every
   egress/ingress rule that has explicit ports AND at least one
   namespaceSelector/podSelector peer. Auto-on when `istio.ambient.enabled:

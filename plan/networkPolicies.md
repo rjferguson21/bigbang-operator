@@ -14,10 +14,6 @@ Source: `bb-common/chart/templates/network-policies/`, schema at
 | `enabled` | bool | `false` | Master switch. Nothing under `networkPolicies` is emitted unless `true`. |
 | `prependReleaseName` | bool | `false` | Prepend release name to every emitted `NetworkPolicy`. |
 | `hbonePortInjection.enabled` | bool | `false` | Inject HBONE port 15008 into rules with port specs (auto-on under ambient). |
-| `defaultsAsHooks.enabled` | bool | `false` | Emit a `-as-hook` copy of each default policy as a Helm hook. |
-| `defaultsAsHooks.hooks[]` | list | `[pre-install, pre-upgrade, post-delete]` | Hook phases. |
-| `defaultsAsHooks.weight` | int | `-5` | Hook weight. |
-| `defaultsAsHooks.deletePolicies[]` | list | `[hook-succeeded, before-hook-creation]` | Hook delete policies. |
 | `egress.excludeCIDRs[]` | list | `[169.254.169.254/32]` | CIDRs stripped from all ipBlock egress rules. |
 | `additionalPolicies[]` | list | `[]` | Raw `NetworkPolicy` passthrough (preferred). |
 | `additional[]` | list | `[]` | Legacy alias for `additionalPolicies`. |
@@ -102,7 +98,7 @@ networkPolicies:
 
 | Source | Kind | Naming |
 | --- | --- | --- |
-| each enabled default | `NetworkPolicy` | `default-{egress,ingress}-<policy-name>` (+ `-as-hook` when `defaultsAsHooks.enabled`) |
+| each enabled default | `NetworkPolicy` | `default-{egress,ingress}-<policy-name>` |
 | each shorthand egress entry | `NetworkPolicy` | `allow-egress-from-<src>-to-ns-<ns>-pod-<pod>-<proto>-port[s]-<port>` |
 | each shorthand ingress entry | `NetworkPolicy` | `allow-ingress-to-<dst>-<proto>-port[s]-<port>-from-ns-<ns>-pod-<pod>` |
 | each `additionalPolicies[]` | `NetworkPolicy` | name from entry |

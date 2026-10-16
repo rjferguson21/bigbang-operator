@@ -80,13 +80,8 @@ without `POD_NAMESPACE`).
 
 ## Events
 
-Spec fields that are accepted but deliberately not honored produce a Warning
-event on the Package rather than a silent no-op:
-
-```
-Warning  UnsupportedField  networkPolicies.defaultsAsHooks is ignored: the operator
-                           only reconciles persistent policies and does not manage Helm hooks
-```
+Spec fields that are accepted but deliberately not honored produce an
+`UnsupportedField` Warning event on the Package rather than a silent no-op.
 
 ## Metrics
 
